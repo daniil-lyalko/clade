@@ -38,10 +38,9 @@ Examples:
   clade resume                       # Interactive picker
   clade resume try-redis             # Specific experiment
   clade resume try-redis -r backend  # Adopt branch from specific repo
-  clade resume try-redis -o          # Resume + open editor (uses config default)
-  clade resume try-redis --open cursor   # Resume + open Cursor IDE
-  clade resume try-redis --open code     # Resume + open VS Code
-  clade resume try-redis --open nvim     # Resume + nvim in tmux split`,
+  clade resume try-redis -o cursor   # Resume + open Cursor IDE
+  clade resume try-redis -o code     # Resume + open VS Code
+  clade resume try-redis -o nvim     # Resume + open nvim`,
 	Args:              cobra.MaximumNArgs(1),
 	RunE:              runResume,
 	ValidArgsFunction: completeResumableNames,
@@ -52,8 +51,6 @@ func init() {
 	resumeCmd.Flags().StringVarP(&resumeRepoFlag, "repo", "r", "", "Repository for adopting orphaned branches")
 	resumeCmd.Flags().StringVarP(&resumeAgentFlag, "agent", "a", "", "Agent to launch (overrides config)")
 	resumeCmd.Flags().StringVarP(&resumeOpenFlag, "open", "o", "", "Open editor alongside agent (cursor, code, nvim)")
-	// When -o is provided without a value, use "default" as a sentinel
-	resumeCmd.Flags().Lookup("open").NoOptDefVal = "default"
 }
 
 func runResume(cmd *cobra.Command, args []string) error {
@@ -394,57 +391,32 @@ func completeResumableNames(cmd *cobra.Command, args []string, toComplete string
 // openEditorIfConfigured opens the editor based on the flag setting
 // Used for cases where we call a different agent launcher (e.g., projects)
 func openEditorIfConfigured(cfg *config.Config, workdir string, openFlag string) error {
-	// Resolve which editor to open
-	editor := ""
-	if openFlag == "default" {
-		editor = cfg.OpenWith
-		if editor == "" {
-			ui.Warn("No default editor configured. Set 'open_with' in config or specify: --open cursor")
-			return nil
-		}
-	} else if openFlag != "" {
-		editor = openFlag
-	}
-
-	if editor == "" {
+	if openFlag == "" {
 		return nil
 	}
 
 	opts := agent.EditorOptions{
 		TmuxSplitDirection: cfg.TmuxSplitDirection,
 	}
-	if err := agent.OpenEditor(workdir, editor, opts); err != nil {
+	if err := agent.OpenEditor(workdir, openFlag, opts); err != nil {
 		return err
 	}
-	ui.Info("Opened %s", editor)
+	ui.Info("Opened %s", openFlag)
 	return nil
 }
 
 // launchAgentWithEditor opens an editor (if configured) and then launches the agent
 func launchAgentWithEditor(cfg *config.Config, workdir string, agentOverride string, openFlag string) error {
-	// Resolve which editor to open
-	editor := ""
-	if openFlag == "default" {
-		// -o was provided without a value, use config default
-		editor = cfg.OpenWith
-		if editor == "" {
-			ui.Warn("No default editor configured. Set 'open_with' in config or specify: --open cursor")
-		}
-	} else if openFlag != "" {
-		// Explicit editor specified
-		editor = openFlag
-	}
-
-	// Open the editor first (if any)
-	if editor != "" {
+	// Open the editor first (if specified)
+	if openFlag != "" {
 		opts := agent.EditorOptions{
 			TmuxSplitDirection: cfg.TmuxSplitDirection,
 		}
-		if err := agent.OpenEditor(workdir, editor, opts); err != nil {
+		if err := agent.OpenEditor(workdir, openFlag, opts); err != nil {
 			ui.Warn("Could not open editor: %s", err)
 			// Continue anyway - don't block the agent launch
 		} else {
-			ui.Info("Opened %s", editor)
+			ui.Info("Opened %s", openFlag)
 		}
 	}
 

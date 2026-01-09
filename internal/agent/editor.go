@@ -44,21 +44,17 @@ func openVSCode(workdir string) error {
 	return cmd.Start()
 }
 
-// openNvim opens neovim - in tmux split if available, otherwise warns
+// openNvim opens neovim in a tmux split pane
 func openNvim(workdir string, opts EditorOptions) error {
 	if !inTmux() {
-		return fmt.Errorf("nvim requires tmux for split view. Use --open cursor or --open code instead")
+		return fmt.Errorf("nvim requires tmux (run inside tmux for split panes)")
 	}
 
-	// Determine split flag based on direction
 	splitFlag := "-h" // horizontal (side by side) is default
 	if opts.TmuxSplitDirection == "vertical" {
-		splitFlag = "-v" // vertical (stacked)
+		splitFlag = "-v"
 	}
 
-	// Create new pane with nvim
-	// -c starts the pane in the specified directory
-	// The new pane opens on the right/bottom, current pane (Claude) stays in focus
 	cmd := exec.Command("tmux", "split-window", splitFlag, "-c", workdir, "nvim", ".")
 	cmd.Dir = workdir
 	return cmd.Run()
