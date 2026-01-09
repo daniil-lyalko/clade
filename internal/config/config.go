@@ -13,26 +13,30 @@ type RepoSettings struct {
 
 // Config holds the user configuration for clade
 type Config struct {
-	BaseDir      string                  `json:"base_dir"`
-	Agent        string                  `json:"agent"`
-	AgentFlags   []string                `json:"agent_flags"`
-	AutoInit     bool                    `json:"auto_init"`
-	Repos        map[string]string       `json:"repos"`
-	RepoSettings map[string]RepoSettings `json:"repo_settings,omitempty"`
-	LastRepo     string                  `json:"last_repo"`
+	BaseDir            string                  `json:"base_dir"`
+	Agent              string                  `json:"agent"`
+	AgentFlags         []string                `json:"agent_flags"`
+	AutoInit           bool                    `json:"auto_init"`
+	Repos              map[string]string       `json:"repos"`
+	RepoSettings       map[string]RepoSettings `json:"repo_settings,omitempty"`
+	LastRepo           string                  `json:"last_repo"`
+	OpenWith           string                  `json:"open_with,omitempty"`
+	TmuxSplitDirection string                  `json:"tmux_split_direction,omitempty"`
 }
 
 // DefaultConfig returns a config with default values
 func DefaultConfig() *Config {
 	homeDir, _ := os.UserHomeDir()
 	return &Config{
-		BaseDir:      filepath.Join(homeDir, "clade"),
-		Agent:        "claude",
-		AgentFlags:   []string{},
-		AutoInit:     true,
-		Repos:        make(map[string]string),
-		RepoSettings: make(map[string]RepoSettings),
-		LastRepo:     "",
+		BaseDir:            filepath.Join(homeDir, "clade"),
+		Agent:              "claude",
+		AgentFlags:         []string{},
+		AutoInit:           true,
+		Repos:              make(map[string]string),
+		RepoSettings:       make(map[string]RepoSettings),
+		LastRepo:           "",
+		OpenWith:           "",
+		TmuxSplitDirection: "horizontal",
 	}
 }
 

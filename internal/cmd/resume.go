@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/daniil-lyalko/clade/internal/agent"
 	"github.com/daniil-lyalko/clade/internal/config"
 	"github.com/daniil-lyalko/clade/internal/git"
 	"github.com/daniil-lyalko/clade/internal/ui"
@@ -14,8 +15,9 @@ import (
 )
 
 var (
-	resumeRepoFlag   string
-	resumeAgentFlag  string
+	resumeRepoFlag  string
+	resumeAgentFlag string
+	resumeOpenFlag  string
 )
 
 var resumeCmd = &cobra.Command{
@@ -33,9 +35,13 @@ The SessionStart hook will automatically inject context including:
   - Ticket information
 
 Examples:
-  clade resume                  # Interactive picker
-  clade resume try-redis        # Specific experiment
-  clade resume try-redis -r backend  # Adopt branch from specific repo`,
+  clade resume                       # Interactive picker
+  clade resume try-redis             # Specific experiment
+  clade resume try-redis -r backend  # Adopt branch from specific repo
+  clade resume try-redis -o          # Resume + open editor (uses config default)
+  clade resume try-redis --open cursor   # Resume + open Cursor IDE
+  clade resume try-redis --open code     # Resume + open VS Code
+  clade resume try-redis --open nvim     # Resume + nvim in tmux split`,
 	Args:              cobra.MaximumNArgs(1),
 	RunE:              runResume,
 	ValidArgsFunction: completeResumableNames,
@@ -45,6 +51,9 @@ func init() {
 	rootCmd.AddCommand(resumeCmd)
 	resumeCmd.Flags().StringVarP(&resumeRepoFlag, "repo", "r", "", "Repository for adopting orphaned branches")
 	resumeCmd.Flags().StringVarP(&resumeAgentFlag, "agent", "a", "", "Agent to launch (overrides config)")
+	resumeCmd.Flags().StringVarP(&resumeOpenFlag, "open", "o", "", "Open editor alongside agent (cursor, code, nvim)")
+	// When -o is provided without a value, use "default" as a sentinel
+	resumeCmd.Flags().Lookup("open").NoOptDefVal = "default"
 }
 
 func runResume(cmd *cobra.Command, args []string) error {
@@ -216,7 +225,7 @@ func resumeTrackedExperiment(cfg *config.Config, state *config.State, exp *confi
 	ui.Header("Resuming: %s", exp.Name)
 	ui.KeyValue("Path", exp.Path)
 
-	return launchAgent(cfg, exp.Path, resumeAgentFlag)
+	return launchAgentWithEditor(cfg, exp.Path, resumeAgentFlag, resumeOpenFlag)
 }
 
 func resumeTrackedProject(cfg *config.Config, state *config.State, proj *config.Project) error {
@@ -242,6 +251,11 @@ func resumeTrackedProject(cfg *config.Config, state *config.State, proj *config.
 
 	ui.Header("Resuming: %s", proj.Name)
 	ui.KeyValue("Path", proj.Path)
+
+	// Open editor if configured
+	if err := openEditorIfConfigured(cfg, proj.Path, resumeOpenFlag); err != nil {
+		ui.Warn("Could not open editor: %s", err)
+	}
 
 	return launchProjectAgent(cfg, proj, resumeAgentFlag)
 }
@@ -324,7 +338,7 @@ func adoptOrphanedBranch(cfg *config.Config, state *config.State, name string) e
 	ui.Success("Adopted experiment '%s'", name)
 	ui.KeyValue("Path", expPath)
 
-	return launchAgent(cfg, expPath, resumeAgentFlag)
+	return launchAgentWithEditor(cfg, expPath, resumeAgentFlag, resumeOpenFlag)
 }
 
 func resumeTrackedScratch(cfg *config.Config, state *config.State, scratch *config.Scratch) error {
@@ -344,7 +358,7 @@ func resumeTrackedScratch(cfg *config.Config, state *config.State, scratch *conf
 	ui.Header("Resuming: %s", scratch.Name)
 	ui.KeyValue("Path", scratch.Path)
 
-	return launchAgent(cfg, scratch.Path, resumeAgentFlag)
+	return launchAgentWithEditor(cfg, scratch.Path, resumeAgentFlag, resumeOpenFlag)
 }
 
 // completeResumableNames provides shell completion for experiment/project/scratch names
@@ -375,4 +389,65 @@ func completeResumableNames(cmd *cobra.Command, args []string, toComplete string
 	}
 
 	return names, cobra.ShellCompDirectiveNoFileComp
+}
+
+// openEditorIfConfigured opens the editor based on the flag setting
+// Used for cases where we call a different agent launcher (e.g., projects)
+func openEditorIfConfigured(cfg *config.Config, workdir string, openFlag string) error {
+	// Resolve which editor to open
+	editor := ""
+	if openFlag == "default" {
+		editor = cfg.OpenWith
+		if editor == "" {
+			ui.Warn("No default editor configured. Set 'open_with' in config or specify: --open cursor")
+			return nil
+		}
+	} else if openFlag != "" {
+		editor = openFlag
+	}
+
+	if editor == "" {
+		return nil
+	}
+
+	opts := agent.EditorOptions{
+		TmuxSplitDirection: cfg.TmuxSplitDirection,
+	}
+	if err := agent.OpenEditor(workdir, editor, opts); err != nil {
+		return err
+	}
+	ui.Info("Opened %s", editor)
+	return nil
+}
+
+// launchAgentWithEditor opens an editor (if configured) and then launches the agent
+func launchAgentWithEditor(cfg *config.Config, workdir string, agentOverride string, openFlag string) error {
+	// Resolve which editor to open
+	editor := ""
+	if openFlag == "default" {
+		// -o was provided without a value, use config default
+		editor = cfg.OpenWith
+		if editor == "" {
+			ui.Warn("No default editor configured. Set 'open_with' in config or specify: --open cursor")
+		}
+	} else if openFlag != "" {
+		// Explicit editor specified
+		editor = openFlag
+	}
+
+	// Open the editor first (if any)
+	if editor != "" {
+		opts := agent.EditorOptions{
+			TmuxSplitDirection: cfg.TmuxSplitDirection,
+		}
+		if err := agent.OpenEditor(workdir, editor, opts); err != nil {
+			ui.Warn("Could not open editor: %s", err)
+			// Continue anyway - don't block the agent launch
+		} else {
+			ui.Info("Opened %s", editor)
+		}
+	}
+
+	// Now launch the agent
+	return launchAgent(cfg, workdir, agentOverride)
 }
