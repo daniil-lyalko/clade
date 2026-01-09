@@ -13,7 +13,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var resumeRepoFlag string
+var (
+	resumeRepoFlag   string
+	resumeAgentFlag  string
+)
 
 var resumeCmd = &cobra.Command{
 	Use:   "resume [name]",
@@ -41,6 +44,7 @@ Examples:
 func init() {
 	rootCmd.AddCommand(resumeCmd)
 	resumeCmd.Flags().StringVarP(&resumeRepoFlag, "repo", "r", "", "Repository for adopting orphaned branches")
+	resumeCmd.Flags().StringVarP(&resumeAgentFlag, "agent", "a", "", "Agent to launch (overrides config)")
 }
 
 func runResume(cmd *cobra.Command, args []string) error {
@@ -212,7 +216,7 @@ func resumeTrackedExperiment(cfg *config.Config, state *config.State, exp *confi
 	ui.Header("Resuming: %s", exp.Name)
 	ui.KeyValue("Path", exp.Path)
 
-	return launchAgent(cfg, exp.Path)
+	return launchAgent(cfg, exp.Path, resumeAgentFlag)
 }
 
 func resumeTrackedProject(cfg *config.Config, state *config.State, proj *config.Project) error {
@@ -239,7 +243,7 @@ func resumeTrackedProject(cfg *config.Config, state *config.State, proj *config.
 	ui.Header("Resuming: %s", proj.Name)
 	ui.KeyValue("Path", proj.Path)
 
-	return launchProjectAgent(cfg, proj)
+	return launchProjectAgent(cfg, proj, resumeAgentFlag)
 }
 
 func adoptOrphanedBranch(cfg *config.Config, state *config.State, name string) error {
@@ -320,7 +324,7 @@ func adoptOrphanedBranch(cfg *config.Config, state *config.State, name string) e
 	ui.Success("Adopted experiment '%s'", name)
 	ui.KeyValue("Path", expPath)
 
-	return launchAgent(cfg, expPath)
+	return launchAgent(cfg, expPath, resumeAgentFlag)
 }
 
 func resumeTrackedScratch(cfg *config.Config, state *config.State, scratch *config.Scratch) error {
@@ -340,7 +344,7 @@ func resumeTrackedScratch(cfg *config.Config, state *config.State, scratch *conf
 	ui.Header("Resuming: %s", scratch.Name)
 	ui.KeyValue("Path", scratch.Path)
 
-	return launchAgent(cfg, scratch.Path)
+	return launchAgent(cfg, scratch.Path, resumeAgentFlag)
 }
 
 // completeResumableNames provides shell completion for experiment/project/scratch names

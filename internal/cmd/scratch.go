@@ -9,12 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/daniil-lyalko/clade/internal/agent"
 	"github.com/daniil-lyalko/clade/internal/config"
 	"github.com/daniil-lyalko/clade/internal/ui"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
+
+var scratchAgentFlag string
 
 var scratchCmd = &cobra.Command{
 	Use:   "scratch [name]",
@@ -36,6 +37,7 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(scratchCmd)
+	scratchCmd.Flags().StringVarP(&scratchAgentFlag, "agent", "a", "", "Agent to launch (overrides config)")
 }
 
 func runScratch(cmd *cobra.Command, args []string) error {
@@ -82,7 +84,7 @@ func runScratch(cmd *cobra.Command, args []string) error {
 		_, err := prompt.Run()
 		if err == nil {
 			// User wants to resume
-			return launchScratchAgent(cfg, existing.Path)
+			return launchAgent(cfg, existing.Path, scratchAgentFlag)
 		}
 		return nil
 	}
@@ -130,19 +132,7 @@ func runScratch(cmd *cobra.Command, args []string) error {
 	ui.Success("Scratch folder created!")
 
 	// Launch agent
-	return launchScratchAgent(cfg, scratchPath)
-}
-
-func launchScratchAgent(cfg *config.Config, workdir string) error {
-	ui.Info("Launching %s...", cfg.Agent)
-	fmt.Println()
-
-	ag := agent.NewAgent(cfg.Agent)
-	opts := agent.LaunchOptions{
-		Flags: cfg.AgentFlags,
-	}
-
-	return ag.Launch(workdir, opts)
+	return launchAgent(cfg, scratchPath, scratchAgentFlag)
 }
 
 func isValidScratchName(name string) bool {

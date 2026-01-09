@@ -19,7 +19,8 @@ import (
 )
 
 var (
-	expRepoFlag string
+	expRepoFlag   string
+	expAgentFlag  string
 )
 
 var expCmd = &cobra.Command{
@@ -43,6 +44,7 @@ The experiment creates:
 func init() {
 	rootCmd.AddCommand(expCmd)
 	expCmd.Flags().StringVarP(&expRepoFlag, "repo", "r", "", "Repository path or registered name")
+	expCmd.Flags().StringVarP(&expAgentFlag, "agent", "a", "", "Agent to launch (overrides config)")
 }
 
 func runExp(cmd *cobra.Command, args []string) error {
@@ -104,7 +106,7 @@ func runExp(cmd *cobra.Command, args []string) error {
 		_, err := prompt.Run()
 		if err == nil {
 			// User wants to resume
-			return launchAgent(cfg, existing.Path)
+			return launchAgent(cfg, existing.Path, expAgentFlag)
 		}
 		return nil
 	}
@@ -187,7 +189,7 @@ func runExp(cmd *cobra.Command, args []string) error {
 	ui.Success("Experiment created!")
 
 	// Launch agent
-	return launchAgent(cfg, expPath)
+	return launchAgent(cfg, expPath, expAgentFlag)
 }
 
 func resolveRepo(cfg *config.Config, repoFlag string) (string, error) {
@@ -250,11 +252,16 @@ func resolveRepo(cfg *config.Config, repoFlag string) (string, error) {
 	return config.ExpandPath(cfg.Repos[selected]), nil
 }
 
-func launchAgent(cfg *config.Config, workdir string) error {
-	ui.Info("Launching %s...", cfg.Agent)
+func launchAgent(cfg *config.Config, workdir string, agentOverride string) error {
+	agentCmd := cfg.Agent
+	if agentOverride != "" {
+		agentCmd = agentOverride
+	}
+
+	ui.Info("Launching %s...", agentCmd)
 	fmt.Println()
 
-	ag := agent.NewAgent(cfg.Agent)
+	ag := agent.NewAgent(agentCmd)
 	opts := agent.LaunchOptions{
 		Flags: cfg.AgentFlags,
 	}

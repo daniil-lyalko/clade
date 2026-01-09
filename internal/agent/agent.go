@@ -69,6 +69,13 @@ func (g *GenericAgent) Launch(workdir string, opts LaunchOptions) error {
 		args = parts[1:]
 	}
 
+	// Replace "." with the actual workdir path (some editors don't respect cmd.Dir)
+	for i, arg := range args {
+		if arg == "." {
+			args[i] = workdir
+		}
+	}
+
 	cmd := exec.Command(parts[0], args...)
 	cmd.Dir = workdir
 	cmd.Stdin = os.Stdin

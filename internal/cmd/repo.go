@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/daniil-lyalko/clade/internal/config"
@@ -20,13 +21,18 @@ var repoCmd = &cobra.Command{
 
 var repoAddCmd = &cobra.Command{
 	Use:   "add <path>",
-	Short: "Register a repository",
+	Short: "Register a repository or folder of repositories",
 	Long: `Register a repository for quick access from anywhere.
+
+If the path is a git repository, it will be registered directly.
+If the path is a directory containing git repositories, all repos
+in that directory will be registered.
 
 Examples:
   clade repo add ~/repos/my-project
   clade repo add . --name backend
-  clade repo add ~/repos/api --name api`,
+  clade repo add ~/repos/api --name api
+  clade repo add ~/repos              # Scans and adds all repos in folder`,
 	Args: cobra.ExactArgs(1),
 	RunE: runRepoAdd,
 }
@@ -68,11 +74,25 @@ func runRepoAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to resolve path: %w", err)
 	}
 
-	// Verify it's a git repo
-	if !git.IsGitRepo(absPath) {
+	// Check if it's a git repo directly
+	if git.IsGitRepo(absPath) {
+		return addSingleRepo(cfg, absPath, repoNameFlag)
+	}
+
+	// Not a git repo - check if it's a directory we can scan
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return fmt.Errorf("path not found: %s", absPath)
+	}
+	if !info.IsDir() {
 		return fmt.Errorf("not a git repository: %s", absPath)
 	}
 
+	// Scan for git repos in subdirectories
+	return scanAndAddRepos(cfg, absPath)
+}
+
+func addSingleRepo(cfg *config.Config, absPath, customName string) error {
 	// Get repo root
 	repoRoot, err := git.GetRepoRoot(absPath)
 	if err != nil {
@@ -80,7 +100,7 @@ func runRepoAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	// Determine name
-	name := repoNameFlag
+	name := customName
 	if name == "" {
 		name = filepath.Base(repoRoot)
 	}
@@ -102,6 +122,70 @@ func runRepoAdd(cmd *cobra.Command, args []string) error {
 
 	ui.Success("Registered repository '%s'", name)
 	ui.KeyValue("Path", repoRoot)
+
+	return nil
+}
+
+func scanAndAddRepos(cfg *config.Config, dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("failed to read directory: %w", err)
+	}
+
+	var added, skipped, alreadyRegistered int
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		subdir := filepath.Join(dir, entry.Name())
+		if !git.IsGitRepo(subdir) {
+			continue
+		}
+
+		repoRoot, err := git.GetRepoRoot(subdir)
+		if err != nil {
+			skipped++
+			continue
+		}
+
+		name := filepath.Base(repoRoot)
+
+		// Check if already registered
+		if existing, ok := cfg.Repos[name]; ok {
+			if config.ExpandPath(existing) == repoRoot {
+				alreadyRegistered++
+				continue
+			}
+			// Name conflict - skip with unique suffix note
+			ui.Warn("Skipped '%s' - name already used for %s", name, existing)
+			skipped++
+			continue
+		}
+
+		cfg.Repos[name] = repoRoot
+		added++
+	}
+
+	if added == 0 && alreadyRegistered == 0 && skipped == 0 {
+		return fmt.Errorf("no git repositories found in %s", dir)
+	}
+
+	if added > 0 {
+		if err := cfg.Save(); err != nil {
+			return fmt.Errorf("failed to save config: %w", err)
+		}
+		ui.Success("Registered %d repositories", added)
+	}
+
+	if alreadyRegistered > 0 {
+		ui.Info("%d already registered", alreadyRegistered)
+	}
+
+	if skipped > 0 {
+		ui.Warn("%d skipped (conflicts or errors)", skipped)
+	}
 
 	return nil
 }

@@ -17,6 +17,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var projectAgentFlag string
+
 var projectCmd = &cobra.Command{
 	Use:   "project [name]",
 	Short: "Create multi-repo workspace with unified branch",
@@ -40,6 +42,7 @@ Creates:
 
 func init() {
 	rootCmd.AddCommand(projectCmd)
+	projectCmd.Flags().StringVarP(&projectAgentFlag, "agent", "a", "", "Agent to launch (overrides config)")
 }
 
 type projectRepo struct {
@@ -87,7 +90,7 @@ func runProject(cmd *cobra.Command, args []string) error {
 		}
 		_, err := prompt.Run()
 		if err == nil {
-			return launchProjectAgent(cfg, existing)
+			return launchProjectAgent(cfg, existing, projectAgentFlag)
 		}
 		return nil
 	}
@@ -314,7 +317,7 @@ func runProject(cmd *cobra.Command, args []string) error {
 	ui.Success("Project created!")
 
 	// Launch agent
-	return launchProjectAgent(cfg, project)
+	return launchProjectAgent(cfg, project, projectAgentFlag)
 }
 
 func getRepoNames(cfg *config.Config) []string {
@@ -345,8 +348,13 @@ func resolveRepoPath(cfg *config.Config, input string) (string, error) {
 	return git.GetRepoRoot(absPath)
 }
 
-func launchProjectAgent(cfg *config.Config, project *config.Project) error {
-	ui.Info("Launching %s...", cfg.Agent)
+func launchProjectAgent(cfg *config.Config, project *config.Project, agentOverride string) error {
+	agentCmd := cfg.Agent
+	if agentOverride != "" {
+		agentCmd = agentOverride
+	}
+
+	ui.Info("Launching %s...", agentCmd)
 	fmt.Println()
 
 	// For multi-repo, we launch in the first repo and add others
@@ -362,7 +370,7 @@ func launchProjectAgent(cfg *config.Config, project *config.Project) error {
 		addDirs = append(addDirs, filepath.Join(project.Path, project.Repos[i].Name))
 	}
 
-	ag := agent.NewAgent(cfg.Agent)
+	ag := agent.NewAgent(agentCmd)
 	opts := agent.LaunchOptions{
 		AddDirs: addDirs,
 		Flags:   cfg.AgentFlags,
