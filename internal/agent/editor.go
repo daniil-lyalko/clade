@@ -57,7 +57,7 @@ func openNvim(workdir string, opts EditorOptions) error {
 
 	cmd := exec.Command("tmux", "split-window", splitFlag, "-c", workdir, "nvim", ".")
 	cmd.Dir = workdir
-	return cmd.Run()
+	return cmd.Start() // Use Start() instead of Run() to avoid blocking
 }
 
 // openGeneric tries to open an arbitrary editor command
