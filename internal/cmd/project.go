@@ -18,6 +18,7 @@ import (
 )
 
 var projectAgentFlag string
+var projectAddAgentFlag string
 
 var projectCmd = &cobra.Command{
 	Use:   "project [name]",
@@ -40,9 +41,26 @@ Creates:
 	RunE: runProject,
 }
 
+var projectAddCmd = &cobra.Command{
+	Use:   "add [project] [repo]",
+	Short: "Add a repository to an existing project",
+	Long: `Add a new repository to an existing project.
+
+The new repo will use the same branch name as the existing project.
+
+Examples:
+  clade project add                           # Interactive: pick project and repo
+  clade project add api-integration           # Pick repo from registered repos
+  clade project add api-integration backend   # Fully specified`,
+	Args: cobra.MaximumNArgs(2),
+	RunE: runProjectAdd,
+}
+
 func init() {
 	rootCmd.AddCommand(projectCmd)
+	projectCmd.AddCommand(projectAddCmd)
 	projectCmd.Flags().StringVarP(&projectAgentFlag, "agent", "a", "", "Agent to launch (overrides config)")
+	projectAddCmd.Flags().StringVarP(&projectAddAgentFlag, "agent", "a", "", "Agent to launch after adding (overrides config)")
 }
 
 type projectRepo struct {
@@ -460,4 +478,249 @@ func copyGitignoredFilesForProject(cfg *config.Config, srcRepo, dstPath string) 
 	}
 
 	return nil
+}
+
+func runProjectAdd(cmd *cobra.Command, args []string) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	state, err := config.LoadState(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to load state: %w", err)
+	}
+
+	// Check if there are any projects
+	if len(state.Projects) == 0 {
+		return fmt.Errorf("no projects found. Create one first with: clade project <name>")
+	}
+
+	// Get project name
+	var projectName string
+	if len(args) >= 1 {
+		projectName = args[0]
+	} else {
+		// Interactive project picker
+		projectName, err = pickProject(state)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Find the project
+	project, ok := state.Projects[projectName]
+	if !ok {
+		return fmt.Errorf("project '%s' not found", projectName)
+	}
+
+	// Check if there are registered repos
+	if len(cfg.Repos) == 0 {
+		return fmt.Errorf("no registered repos. Add some with: clade repo add <path>")
+	}
+
+	// Get repo to add
+	var repoName string
+	var repoPath string
+	if len(args) >= 2 {
+		repoName = args[1]
+		// Resolve repo path
+		repoPath, err = resolveRepoPath(cfg, repoName)
+		if err != nil {
+			return err
+		}
+	} else {
+		// Interactive repo picker - filter out repos already in project
+		repoName, repoPath, err = pickRepoToAdd(cfg, project)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Check if repo is already in project
+	for _, r := range project.Repos {
+		if config.ExpandPath(r.Source) == repoPath {
+			return fmt.Errorf("repo '%s' is already in project '%s'", filepath.Base(repoPath), projectName)
+		}
+	}
+
+	// Get folder name for the new repo
+	defaultName := filepath.Base(repoPath)
+	folderPrompt := promptui.Prompt{
+		Label:   "Folder name",
+		Default: defaultName,
+	}
+	folderName, err := folderPrompt.Run()
+	if err != nil {
+		return err
+	}
+
+	// Check folder name doesn't conflict
+	for _, r := range project.Repos {
+		if r.Name == folderName {
+			return fmt.Errorf("folder name '%s' already exists in project", folderName)
+		}
+	}
+
+	// Preflight check for branch
+	ui.Info("Checking branch '%s'...", project.Branch)
+	branchResults := git.PreflightCheck([]string{repoPath}, project.Branch)
+	info := branchResults[repoPath]
+
+	switch info.Status {
+	case git.BranchNotFound:
+		ui.Success("Will create new branch")
+	case git.BranchLocalOnly:
+		ui.Warn("Local branch exists (will use existing)")
+	case git.BranchRemoteOnly:
+		ui.Info("Will track remote branch")
+	case git.BranchBoth:
+		if info.Diverged {
+			ui.Warn("Branch exists, diverged (%d local, %d remote commits)", info.LocalAhead, info.RemoteBehind)
+		} else {
+			ui.Info("Branch exists and in sync")
+		}
+	}
+	fmt.Println()
+
+	// Create worktree
+	worktreePath := filepath.Join(project.Path, folderName)
+
+	ui.Header("Adding to project: %s", projectName)
+	ui.KeyValue("Repo", filepath.Base(repoPath))
+	ui.KeyValue("Folder", folderName)
+	ui.KeyValue("Branch", project.Branch)
+	fmt.Println()
+
+	ui.Info("Creating worktree...")
+
+	var wtErr error
+	switch info.Status {
+	case git.BranchNotFound:
+		wtErr = git.CreateWorktreeNew(repoPath, worktreePath, project.Branch)
+	case git.BranchLocalOnly, git.BranchBoth:
+		wtErr = git.CreateWorktreeFromBranch(repoPath, worktreePath, project.Branch)
+	case git.BranchRemoteOnly:
+		wtErr = git.CreateWorktreeTrackRemote(repoPath, worktreePath, project.Branch)
+	}
+
+	if wtErr != nil {
+		return fmt.Errorf("failed to create worktree: %w", wtErr)
+	}
+
+	// Auto-init .claude/ if configured
+	if cfg.AutoInit {
+		if err := InitRepo(worktreePath); err != nil {
+			ui.Warn("Failed to init: %v", err)
+		}
+	}
+
+	// Copy gitignored files
+	if err := copyGitignoredFilesForProject(cfg, repoPath, worktreePath); err != nil {
+		ui.Warn("Failed to copy some files: %v", err)
+	}
+
+	// Update project in state
+	newRepo := config.ProjectRepo{
+		Name:   folderName,
+		Source: repoPath,
+	}
+	project.Repos = append(project.Repos, newRepo)
+	project.LastUsed = time.Now()
+
+	if err := state.Save(cfg); err != nil {
+		ui.Warn("Failed to save state: %v", err)
+	}
+
+	// Update .clade-project.json
+	projectMeta := map[string]interface{}{
+		"type":    "project",
+		"name":    project.Name,
+		"branch":  project.Branch,
+		"repos":   project.Repos,
+		"created": project.Created.Format(time.RFC3339),
+	}
+
+	metaPath := filepath.Join(project.Path, ".clade-project.json")
+	if err := writeProjectJSON(metaPath, projectMeta); err != nil {
+		ui.Warn("Failed to update .clade-project.json: %v", err)
+	}
+
+	ui.Success("Added %s to project!", folderName)
+	fmt.Println()
+
+	// Ask if user wants to launch agent
+	prompt := promptui.Prompt{
+		Label:     "Launch agent",
+		IsConfirm: true,
+		Default:   "y",
+	}
+	if _, err := prompt.Run(); err == nil {
+		return launchProjectAgent(cfg, project, projectAddAgentFlag)
+	}
+
+	return nil
+}
+
+func pickProject(state *config.State) (string, error) {
+	var projectNames []string
+	for name := range state.Projects {
+		projectNames = append(projectNames, name)
+	}
+
+	if len(projectNames) == 1 {
+		return projectNames[0], nil
+	}
+
+	prompt := promptui.Select{
+		Label: "Select project",
+		Items: projectNames,
+	}
+
+	_, result, err := prompt.Run()
+	return result, err
+}
+
+func pickRepoToAdd(cfg *config.Config, project *config.Project) (string, string, error) {
+	// Build list of repos not already in project
+	existingPaths := make(map[string]bool)
+	for _, r := range project.Repos {
+		existingPaths[config.ExpandPath(r.Source)] = true
+	}
+
+	type repoOption struct {
+		Name string
+		Path string
+	}
+	var available []repoOption
+
+	for name, path := range cfg.Repos {
+		expanded := config.ExpandPath(path)
+		if !existingPaths[expanded] {
+			available = append(available, repoOption{Name: name, Path: expanded})
+		}
+	}
+
+	if len(available) == 0 {
+		return "", "", fmt.Errorf("all registered repos are already in this project")
+	}
+
+	// Build display items
+	var items []string
+	for _, r := range available {
+		items = append(items, fmt.Sprintf("%s (%s)", r.Name, r.Path))
+	}
+
+	prompt := promptui.Select{
+		Label: "Select repo to add",
+		Items: items,
+	}
+
+	idx, _, err := prompt.Run()
+	if err != nil {
+		return "", "", err
+	}
+
+	selected := available[idx]
+	return selected.Name, selected.Path, nil
 }
