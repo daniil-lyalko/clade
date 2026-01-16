@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/daniil-lyalko/clade/internal/agent"
 	"github.com/daniil-lyalko/clade/internal/config"
 	"github.com/daniil-lyalko/clade/internal/git"
 	"github.com/daniil-lyalko/clade/internal/ui"
@@ -15,10 +14,11 @@ import (
 )
 
 var (
-	resumeRepoFlag   string
-	resumeAgentFlag  string
-	resumeOpenFlag   string
-	resumeBranchFlag string
+	resumeRepoFlag     string
+	resumeEditorFlag   string
+	resumeBranchFlag   string
+	resumeNoAgentFlag  bool
+	resumeNoEditorFlag bool
 )
 
 var resumeCmd = &cobra.Command{
@@ -29,7 +29,7 @@ var resumeCmd = &cobra.Command{
 If the experiment exists in clade's state, it resumes directly.
 If not tracked but the branch exists (locally or remotely), it adopts it.
 
-By default, clade looks for branches named "exp/<name>". Use --branch to
+Searches for branches named "exp/<name>" or "feat/<name>". Use --branch to
 adopt any existing branch regardless of naming convention.
 
 The SessionStart hook will automatically inject context including:
@@ -45,7 +45,7 @@ Examples:
   clade resume price-formula -r backend --branch feat/price-formula-system
   clade resume try-redis -o cursor   # Resume + open Cursor IDE
   clade resume try-redis -o code     # Resume + open VS Code
-  clade resume try-redis -o nvim     # Resume + open nvim`,
+  clade resume foo --no-agent        # Skip launching Claude`,
 	Args:              cobra.MaximumNArgs(1),
 	RunE:              runResume,
 	ValidArgsFunction: completeResumableNames,
@@ -54,9 +54,11 @@ Examples:
 func init() {
 	rootCmd.AddCommand(resumeCmd)
 	resumeCmd.Flags().StringVarP(&resumeRepoFlag, "repo", "r", "", "Repository for adopting orphaned branches")
-	resumeCmd.Flags().StringVarP(&resumeAgentFlag, "agent", "a", "", "Agent to launch (overrides config)")
-	resumeCmd.Flags().StringVarP(&resumeOpenFlag, "open", "o", "", "Open editor alongside agent (cursor, code, nvim)")
+	resumeCmd.Flags().StringVarP(&resumeEditorFlag, "open", "o", "", "Open editor/IDE (cursor, code, nvim)")
+	resumeCmd.Flags().StringVarP(&resumeEditorFlag, "editor", "e", "", "Alias for --open")
 	resumeCmd.Flags().StringVarP(&resumeBranchFlag, "branch", "b", "", "Exact branch name to adopt (e.g., feat/my-feature)")
+	resumeCmd.Flags().BoolVar(&resumeNoAgentFlag, "no-agent", false, "Skip launching the AI agent")
+	resumeCmd.Flags().BoolVar(&resumeNoEditorFlag, "no-editor", false, "Skip opening the editor")
 }
 
 func runResume(cmd *cobra.Command, args []string) error {
@@ -228,7 +230,7 @@ func resumeTrackedExperiment(cfg *config.Config, state *config.State, exp *confi
 	ui.Header("Resuming: %s", exp.Name)
 	ui.KeyValue("Path", exp.Path)
 
-	return launchAgentWithEditor(cfg, exp.Path, resumeAgentFlag, resumeOpenFlag)
+	return launchSession(cfg, exp.Path, resumeEditorFlag, resumeNoAgentFlag, resumeNoEditorFlag)
 }
 
 func resumeTrackedProject(cfg *config.Config, state *config.State, proj *config.Project) error {
@@ -255,12 +257,7 @@ func resumeTrackedProject(cfg *config.Config, state *config.State, proj *config.
 	ui.Header("Resuming: %s", proj.Name)
 	ui.KeyValue("Path", proj.Path)
 
-	// Open editor if configured
-	if err := openEditorIfConfigured(cfg, proj.Path, resumeOpenFlag); err != nil {
-		ui.Warn("Could not open editor: %s", err)
-	}
-
-	return launchProjectAgent(cfg, proj, resumeAgentFlag)
+	return launchProjectSession(cfg, proj, resumeEditorFlag, resumeNoAgentFlag, resumeNoEditorFlag)
 }
 
 func adoptOrphanedBranch(cfg *config.Config, state *config.State, name string) error {
@@ -272,17 +269,59 @@ func adoptOrphanedBranch(cfg *config.Config, state *config.State, name string) e
 		return err
 	}
 
-	// Use explicit branch if provided, otherwise default to exp/ prefix
-	branch := resumeBranchFlag
-	if branch == "" {
-		branch = "exp/" + name
-	}
 	repoName := git.GetRepoName(repoPath)
-
-	ui.Info("Checking for branch '%s' in %s...", branch, repoName)
 	git.Fetch(repoPath)
 
-	branchInfo := git.CheckBranch(repoPath, branch)
+	// Use explicit branch if provided, otherwise search exp/ and feat/ prefixes
+	var branch string
+	var branchInfo git.BranchInfo
+
+	if resumeBranchFlag != "" {
+		branch = resumeBranchFlag
+		ui.Info("Checking for branch '%s' in %s...", branch, repoName)
+		branchInfo = git.CheckBranch(repoPath, branch)
+	} else {
+		// Search for exp/ first, then feat/
+		expBranch := "exp/" + name
+		featBranch := "feat/" + name
+
+		ui.Info("Searching for branches in %s...", repoName)
+
+		expInfo := git.CheckBranch(repoPath, expBranch)
+		featInfo := git.CheckBranch(repoPath, featBranch)
+
+		expFound := expInfo.Status != git.BranchNotFound
+		featFound := featInfo.Status != git.BranchNotFound
+
+		if expFound && featFound {
+			// Both exist - prompt user to choose
+			ui.Info("Found both exp/%s and feat/%s", name, name)
+			prompt := promptui.Select{
+				Label: "Which branch",
+				Items: []string{expBranch, featBranch},
+			}
+			_, branch, err = prompt.Run()
+			if err != nil {
+				return err
+			}
+			if branch == expBranch {
+				branchInfo = expInfo
+			} else {
+				branchInfo = featInfo
+			}
+		} else if expFound {
+			branch = expBranch
+			branchInfo = expInfo
+		} else if featFound {
+			branch = featBranch
+			branchInfo = featInfo
+		} else {
+			ui.Error("Branch not found: tried '%s' and '%s'", expBranch, featBranch)
+			ui.Detail("Create new experiment: clade exp %s", name)
+			ui.Detail("Or specify branch: clade resume %s --branch <branch>", name)
+			return fmt.Errorf("branch not found")
+		}
+	}
 
 	if branchInfo.Status == git.BranchNotFound {
 		ui.Error("Branch '%s' not found locally or on remote", branch)
@@ -345,7 +384,7 @@ func adoptOrphanedBranch(cfg *config.Config, state *config.State, name string) e
 	ui.Success("Adopted experiment '%s'", name)
 	ui.KeyValue("Path", expPath)
 
-	return launchAgentWithEditor(cfg, expPath, resumeAgentFlag, resumeOpenFlag)
+	return launchSession(cfg, expPath, resumeEditorFlag, resumeNoAgentFlag, resumeNoEditorFlag)
 }
 
 func resumeTrackedScratch(cfg *config.Config, state *config.State, scratch *config.Scratch) error {
@@ -365,7 +404,7 @@ func resumeTrackedScratch(cfg *config.Config, state *config.State, scratch *conf
 	ui.Header("Resuming: %s", scratch.Name)
 	ui.KeyValue("Path", scratch.Path)
 
-	return launchAgentWithEditor(cfg, scratch.Path, resumeAgentFlag, resumeOpenFlag)
+	return launchSession(cfg, scratch.Path, resumeEditorFlag, resumeNoAgentFlag, resumeNoEditorFlag)
 }
 
 // completeResumableNames provides shell completion for experiment/project/scratch names
@@ -396,40 +435,4 @@ func completeResumableNames(cmd *cobra.Command, args []string, toComplete string
 	}
 
 	return names, cobra.ShellCompDirectiveNoFileComp
-}
-
-// openEditorIfConfigured opens the editor based on the flag setting
-// Used for cases where we call a different agent launcher (e.g., projects)
-func openEditorIfConfigured(cfg *config.Config, workdir string, openFlag string) error {
-	if openFlag == "" {
-		return nil
-	}
-
-	opts := agent.EditorOptions{
-		TmuxSplitDirection: cfg.TmuxSplitDirection,
-	}
-	if err := agent.OpenEditor(workdir, openFlag, opts); err != nil {
-		return err
-	}
-	ui.Info("Opened %s", openFlag)
-	return nil
-}
-
-// launchAgentWithEditor opens an editor (if configured) and then launches the agent
-func launchAgentWithEditor(cfg *config.Config, workdir string, agentOverride string, openFlag string) error {
-	// Open the editor first (if specified)
-	if openFlag != "" {
-		opts := agent.EditorOptions{
-			TmuxSplitDirection: cfg.TmuxSplitDirection,
-		}
-		if err := agent.OpenEditor(workdir, openFlag, opts); err != nil {
-			ui.Warn("Could not open editor: %s", err)
-			// Continue anyway - don't block the agent launch
-		} else {
-			ui.Info("Opened %s", openFlag)
-		}
-	}
-
-	// Now launch the agent
-	return launchAgent(cfg, workdir, agentOverride)
 }

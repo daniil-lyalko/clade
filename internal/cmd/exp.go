@@ -19,23 +19,31 @@ import (
 )
 
 var (
-	expRepoFlag   string
-	expAgentFlag  string
+	expRepoFlag     string
+	expPickFlag     bool
+	expBranchFlag   string
+	expEditorFlag   string
+	expNoAgentFlag  bool
+	expNoEditorFlag bool
 )
 
 var expCmd = &cobra.Command{
 	Use:   "exp [name]",
 	Short: "Create isolated experiment worktree",
-	Long: `Create an isolated experiment worktree and launch your AI agent.
+	Long: `Create an isolated experiment worktree for throwaway spikes.
 
 Examples:
-  clade exp try-redis           # Quick experiment
-  clade exp PROJ-1234           # Ticket investigation
-  clade exp fix-auth -r backend # Specify repo by name
+  clade exp try-redis              # Quick experiment
+  clade exp PROJ-1234              # Ticket investigation
+  clade exp fix-auth -r backend    # Specify repo by name
+  clade exp fix-auth -p            # Force repo picker
+  clade exp foo -b custom/branch   # Custom branch name
+  clade exp foo -o cursor          # Open Cursor IDE
+  clade exp foo --no-agent         # Skip launching Claude
 
 The experiment creates:
   - A new worktree at ~/clade/experiments/{repo}-{name}/
-  - A branch named exp/{name}
+  - A branch (default: exp/{name}, or custom with -b)
   - Copies .claude/ config from the source repo`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runExp,
@@ -44,7 +52,12 @@ The experiment creates:
 func init() {
 	rootCmd.AddCommand(expCmd)
 	expCmd.Flags().StringVarP(&expRepoFlag, "repo", "r", "", "Repository path or registered name")
-	expCmd.Flags().StringVarP(&expAgentFlag, "agent", "a", "", "Agent to launch (overrides config)")
+	expCmd.Flags().BoolVarP(&expPickFlag, "pick", "p", false, "Force repo picker even if in a git repo")
+	expCmd.Flags().StringVarP(&expBranchFlag, "branch", "b", "", "Custom branch name (skips prompt)")
+	expCmd.Flags().StringVarP(&expEditorFlag, "open", "o", "", "Open editor/IDE (cursor, code, nvim)")
+	expCmd.Flags().StringVarP(&expEditorFlag, "editor", "e", "", "Alias for --open")
+	expCmd.Flags().BoolVar(&expNoAgentFlag, "no-agent", false, "Skip launching the AI agent")
+	expCmd.Flags().BoolVar(&expNoEditorFlag, "no-editor", false, "Skip opening the editor")
 }
 
 func runExp(cmd *cobra.Command, args []string) error {
@@ -72,8 +85,8 @@ func runExp(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid experiment name: use alphanumeric, hyphens, underscores only")
 	}
 
-	// Resolve repository
-	repoPath, err := resolveRepo(cfg, expRepoFlag)
+	// Resolve repository (with pick flag support)
+	repoPath, err := resolveRepoWithPick(cfg, expRepoFlag, expPickFlag)
 	if err != nil {
 		return err
 	}
@@ -87,7 +100,25 @@ func runExp(cmd *cobra.Command, args []string) error {
 	repoName := git.GetRepoName(repoPath)
 	expKey := config.ExperimentKey(repoPath, expName)
 	expPath := filepath.Join(cfg.ExperimentsDir(), expKey)
-	branch := "exp/" + expName
+
+	// Get branch name (prompt if not provided via flag)
+	var branch string
+	if expBranchFlag != "" {
+		branch = expBranchFlag
+	} else {
+		defaultBranch := "exp/" + expName
+		prompt := promptui.Prompt{
+			Label:   "Branch name",
+			Default: defaultBranch,
+		}
+		branch, err = prompt.Run()
+		if err != nil {
+			return err
+		}
+		if branch == "" {
+			branch = defaultBranch
+		}
+	}
 
 	// Check if experiment already exists
 	state, err := config.LoadState(cfg)
@@ -106,7 +137,7 @@ func runExp(cmd *cobra.Command, args []string) error {
 		_, err := prompt.Run()
 		if err == nil {
 			// User wants to resume
-			return launchAgent(cfg, existing.Path, expAgentFlag)
+			return launchSession(cfg, existing.Path, expEditorFlag, expNoAgentFlag, expNoEditorFlag)
 		}
 		return nil
 	}
@@ -188,8 +219,8 @@ func runExp(cmd *cobra.Command, args []string) error {
 
 	ui.Success("Experiment created!")
 
-	// Launch agent
-	return launchAgent(cfg, expPath, expAgentFlag)
+	// Launch editor and/or agent
+	return launchSession(cfg, expPath, expEditorFlag, expNoAgentFlag, expNoEditorFlag)
 }
 
 func resolveRepo(cfg *config.Config, repoFlag string) (string, error) {
@@ -252,21 +283,98 @@ func resolveRepo(cfg *config.Config, repoFlag string) (string, error) {
 	return config.ExpandPath(cfg.Repos[selected]), nil
 }
 
-func launchAgent(cfg *config.Config, workdir string, agentOverride string) error {
-	agentCmd := cfg.Agent
-	if agentOverride != "" {
-		agentCmd = agentOverride
+// resolveRepoWithPick is like resolveRepo but with pick flag support
+func resolveRepoWithPick(cfg *config.Config, repoFlag string, forcePick bool) (string, error) {
+	// If pick flag is set, force interactive picker
+	if forcePick {
+		return showRepoPicker(cfg)
+	}
+	return resolveRepo(cfg, repoFlag)
+}
+
+// showRepoPicker shows an interactive repo picker
+func showRepoPicker(cfg *config.Config) (string, error) {
+	// Check if we're in a git repo - add it as an option
+	var repoNames []string
+	var currentRepoPath string
+
+	cwd, err := os.Getwd()
+	if err == nil && git.IsGitRepo(cwd) {
+		currentRepoPath, _ = git.GetRepoRoot(cwd)
+		repoNames = append(repoNames, "(current directory)")
 	}
 
-	ui.Info("Launching %s...", agentCmd)
-	fmt.Println()
-
-	ag := agent.NewAgent(agentCmd)
-	opts := agent.LaunchOptions{
-		Flags: cfg.AgentFlags,
+	// Add registered repos
+	if cfg.LastRepo != "" {
+		for name, path := range cfg.Repos {
+			if config.ExpandPath(path) == cfg.LastRepo {
+				repoNames = append(repoNames, name+" (last used)")
+			} else {
+				repoNames = append(repoNames, name)
+			}
+		}
+	} else {
+		for name := range cfg.Repos {
+			repoNames = append(repoNames, name)
+		}
 	}
 
-	return ag.Launch(workdir, opts)
+	if len(repoNames) == 0 {
+		return "", fmt.Errorf("no repos available. Register repos with: clade repo add <path>")
+	}
+
+	prompt := promptui.Select{
+		Label: "Select repo",
+		Items: repoNames,
+	}
+	_, selected, err := prompt.Run()
+	if err != nil {
+		return "", err
+	}
+
+	if selected == "(current directory)" {
+		return currentRepoPath, nil
+	}
+
+	// Remove " (last used)" suffix if present
+	selected = strings.TrimSuffix(selected, " (last used)")
+	return config.ExpandPath(cfg.Repos[selected]), nil
+}
+
+// launchSession opens editor and/or launches agent based on config and flags
+func launchSession(cfg *config.Config, workdir string, editorOverride string, noAgent bool, noEditor bool) error {
+	// Determine editor to use
+	editor := cfg.Editor
+	if editorOverride != "" {
+		editor = editorOverride
+	}
+
+	// Open editor first (if configured and not disabled)
+	if !noEditor && editor != "" {
+		opts := agent.EditorOptions{
+			TmuxSplitDirection: cfg.TmuxSplitDirection,
+		}
+		if err := agent.OpenEditor(workdir, editor, opts); err != nil {
+			ui.Warn("Could not open editor: %s", err)
+			// Continue anyway - don't block the agent launch
+		} else {
+			ui.Info("Opened %s", editor)
+		}
+	}
+
+	// Launch agent (if configured and not disabled)
+	if !noAgent && cfg.Agent != "" {
+		ui.Info("Launching %s...", cfg.Agent)
+		fmt.Println()
+
+		ag := agent.NewAgent(cfg.Agent)
+		opts := agent.LaunchOptions{
+			Flags: cfg.AgentFlags,
+		}
+		return ag.Launch(workdir, opts)
+	}
+
+	return nil
 }
 
 func isValidExpName(name string) bool {

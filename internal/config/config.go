@@ -16,11 +16,11 @@ type Config struct {
 	BaseDir            string                  `json:"base_dir"`
 	Agent              string                  `json:"agent"`
 	AgentFlags         []string                `json:"agent_flags"`
+	Editor             string                  `json:"editor,omitempty"`
 	AutoInit           bool                    `json:"auto_init"`
 	Repos              map[string]string       `json:"repos"`
 	RepoSettings       map[string]RepoSettings `json:"repo_settings,omitempty"`
 	LastRepo           string                  `json:"last_repo"`
-	OpenWith           string                  `json:"open_with,omitempty"`
 	TmuxSplitDirection string                  `json:"tmux_split_direction,omitempty"`
 }
 
@@ -31,11 +31,11 @@ func DefaultConfig() *Config {
 		BaseDir:            filepath.Join(homeDir, "clade"),
 		Agent:              "claude",
 		AgentFlags:         []string{},
+		Editor:             "",
 		AutoInit:           true,
 		Repos:              make(map[string]string),
 		RepoSettings:       make(map[string]RepoSettings),
 		LastRepo:           "",
-		OpenWith:           "",
 		TmuxSplitDirection: "horizontal",
 	}
 }

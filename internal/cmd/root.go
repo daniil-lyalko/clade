@@ -190,9 +190,16 @@ func showActionPicker(cfg *config.Config, state *config.State) error {
 	actions = append(actions,
 		action{
 			Name:        "New experiment",
-			Description: "Create an isolated worktree experiment",
+			Description: "Throwaway spike (exp/ branch)",
 			Handler: func() error {
 				return runExp(expCmd, []string{})
+			},
+		},
+		action{
+			Name:        "New feature",
+			Description: "Feature to merge (feat/ branch)",
+			Handler: func() error {
+				return runFeat(featCmd, []string{})
 			},
 		},
 		action{

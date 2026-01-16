@@ -15,7 +15,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var scratchAgentFlag string
+var (
+	scratchEditorFlag   string
+	scratchNoAgentFlag  bool
+	scratchNoEditorFlag bool
+)
 
 var scratchCmd = &cobra.Command{
 	Use:   "scratch [name]",
@@ -30,14 +34,19 @@ Unlike experiments, scratch folders:
 Examples:
   clade scratch doc-analysis       # Quick scratch folder
   clade scratch PROJ-1234          # Ticket investigation (no code)
-  clade scratch meeting-notes      # Temporary workspace`,
+  clade scratch meeting-notes      # Temporary workspace
+  clade scratch foo -o cursor      # Open Cursor IDE
+  clade scratch foo --no-agent     # Skip launching Claude`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runScratch,
 }
 
 func init() {
 	rootCmd.AddCommand(scratchCmd)
-	scratchCmd.Flags().StringVarP(&scratchAgentFlag, "agent", "a", "", "Agent to launch (overrides config)")
+	scratchCmd.Flags().StringVarP(&scratchEditorFlag, "open", "o", "", "Open editor/IDE (cursor, code, nvim)")
+	scratchCmd.Flags().StringVarP(&scratchEditorFlag, "editor", "e", "", "Alias for --open")
+	scratchCmd.Flags().BoolVar(&scratchNoAgentFlag, "no-agent", false, "Skip launching the AI agent")
+	scratchCmd.Flags().BoolVar(&scratchNoEditorFlag, "no-editor", false, "Skip opening the editor")
 }
 
 func runScratch(cmd *cobra.Command, args []string) error {
@@ -84,7 +93,7 @@ func runScratch(cmd *cobra.Command, args []string) error {
 		_, err := prompt.Run()
 		if err == nil {
 			// User wants to resume
-			return launchAgent(cfg, existing.Path, scratchAgentFlag)
+			return launchSession(cfg, existing.Path, scratchEditorFlag, scratchNoAgentFlag, scratchNoEditorFlag)
 		}
 		return nil
 	}
@@ -131,8 +140,8 @@ func runScratch(cmd *cobra.Command, args []string) error {
 
 	ui.Success("Scratch folder created!")
 
-	// Launch agent
-	return launchAgent(cfg, scratchPath, scratchAgentFlag)
+	// Launch editor and/or agent
+	return launchSession(cfg, scratchPath, scratchEditorFlag, scratchNoAgentFlag, scratchNoEditorFlag)
 }
 
 func isValidScratchName(name string) bool {
