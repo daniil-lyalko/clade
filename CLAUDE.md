@@ -26,15 +26,16 @@ Clade fixes all three.
 +-----------------------------------------------------------------+
 |  Worktree Management          |  Context Management             |
 |  -------------------------    |  ----------------------------   |
-|  o exp (experiments)          |  o inject-context (for hooks)   |
-|  o project (multi-repo)       |  o Generates .claude/ config    |
-|  o cleanup                    |  o Tracks state                 |
+|  o exp (throwaway spikes)     |  o inject-context (for hooks)   |
+|  o feat (features to merge)   |  o Generates .claude/ config    |
+|  o project (multi-repo)       |  o Tracks state                 |
+|  o cleanup                    |                                 |
 |  o list / status              |                                 |
 |  o resume                     |                                 |
 +-----------------------------------------------------------------+
-|  Agent Launcher (configurable)                                  |
-|  o Default: claude                                              |
-|  o Alt: cursor, code, $EDITOR                                   |
+|  Agent (AI)                   |  Editor (IDE)                   |
+|  o Default: claude            |  o cursor, code, nvim           |
+|  o Has hooks, context inject  |  o Opens before agent launches  |
 +-----------------------------------------------------------------+
                                 |
                                 v
@@ -209,18 +210,22 @@ clade repo remove my-frontend
 
 ### Repo Selection Logic
 
-When you run `clade exp` or other commands that need a repo:
+When you run `clade exp` or `clade feat` that need a repo:
 
 ```
-1. Are you in a git repo?
-   YES -> Use current repo (most common case)
+1. Did you specify --pick/-p flag?
+   YES -> Force interactive picker
    NO  -> Continue to step 2
 
-2. Did you specify --repo/-r flag?
-   YES -> Use that repo (by path or registered name)
+2. Are you in a git repo?
+   YES -> Use current repo (most common case)
    NO  -> Continue to step 3
 
-3. Are there registered repos?
+3. Did you specify --repo/-r flag?
+   YES -> Use that repo (by path or registered name)
+   NO  -> Continue to step 4
+
+4. Are there registered repos?
    YES -> Interactive picker (last used at top)
    NO  -> Error: "Not in a git repo. Register repos with: clade repo add <path>"
 ```
@@ -231,6 +236,9 @@ When you run `clade exp` or other commands that need a repo:
 # In a repo - just works
 cd ~/repos/my-api
 clade exp try-redis
+
+# Force picker even in a repo
+clade exp try-redis -p
 
 # Anywhere - specify repo
 clade exp try-redis -r my-api
@@ -248,21 +256,36 @@ Select repo:
 
 ### `clade exp [name]`
 
-**Purpose:** Create isolated experiment worktree, launch agent.
+**Purpose:** Create isolated experiment worktree for throwaway spikes.
 
 ```bash
 clade exp try-redis
 clade exp PROJ-1234              # Ticket investigation
 clade exp PROJ-1234-investigate  # More descriptive
+clade exp try-redis -p           # Force repo picker
+clade exp try-redis -b my/branch # Custom branch name
+clade exp try-redis -o cursor    # Open in Cursor
+clade exp try-redis --no-agent   # Skip launching Claude
 ```
+
+**Flags:**
+| Flag | Description |
+|------|-------------|
+| `-r`, `--repo` | Repository path or registered name |
+| `-p`, `--pick` | Force repo picker even if in a git repo |
+| `-b`, `--branch` | Custom branch name (skips prompt) |
+| `-o`, `--open` | Open editor/IDE (cursor, code, nvim) |
+| `--no-agent` | Skip launching the AI agent |
+| `--no-editor` | Skip opening the editor |
 
 **What happens:**
 1. Creates `~/clade/experiments/{repo}-{name}/`
-2. Branch: `exp/{name}`
+2. Branch: `exp/{name}` (or custom with `-b`)
 3. Writes `.clade.json` with metadata
 4. Copies `.claude/` from main repo (or generates if missing)
-5. Launches agent (default: claude)
-6. SessionStart hook fires -> `clade inject-context`
+5. Opens editor (if configured)
+6. Launches agent (default: claude)
+7. SessionStart hook fires -> `clade inject-context`
 
 **Example flow:**
 ```bash
@@ -274,6 +297,22 @@ Creating experiment: try-redis
 
 Launching claude...
 ```
+
+---
+
+### `clade feat [name]`
+
+**Purpose:** Create feature worktree for work intended to merge.
+
+Same as `clade exp` but defaults to `feat/` branch prefix instead of `exp/`.
+
+```bash
+clade feat new-api
+clade feat PROJ-1234-new-api
+clade feat new-api -b feature/custom-name
+```
+
+Use `feat` when you intend to merge the work. Use `exp` for throwaway spikes.
 
 ---
 
@@ -383,16 +422,39 @@ Recent Sessions:
 
 ```bash
 clade resume                    # Interactive picker
-clade resume try-redis          # Specific experiment
+clade resume try-redis          # Specific experiment or feature
 clade resume api-integration    # Project
+clade resume my-exp -o cursor   # Open in Cursor too
+clade resume my-exp --no-agent  # Skip launching Claude
 ```
 
+**Flags:**
+| Flag | Description |
+|------|-------------|
+| `-r`, `--repo` | Repository for adopting orphaned branches |
+| `-b`, `--branch` | Exact branch name to adopt |
+| `-o`, `--open` | Open editor/IDE (cursor, code, nvim) |
+| `--no-agent` | Skip launching the AI agent |
+| `--no-editor` | Skip opening the editor |
+
 **What happens:**
-1. Finds worktree by name
-2. Changes to that directory
-3. Launches agent
-4. SessionStart hook fires -> `clade inject-context`
-5. Claude sees DROPBAG.md, git status, TODOs, ticket info
+1. If tracked: finds worktree by name
+2. If not tracked: searches for `exp/{name}` and `feat/{name}` branches
+3. Changes to that directory
+4. Opens editor (if configured)
+5. Launches agent
+6. SessionStart hook fires -> `clade inject-context`
+7. Claude sees DROPBAG.md, git status, TODOs, ticket info
+
+**Adopting orphaned branches:**
+```bash
+# Resume searches both exp/ and feat/ prefixes
+clade resume my-feature -r my-repo
+
+# If both exp/my-feature and feat/my-feature exist, prompts you to choose
+# Or specify exact branch:
+clade resume my-feature -r my-repo --branch feat/my-feature
+```
 
 ---
 
@@ -513,6 +575,7 @@ PROJ-1234 detected. Please fetch from JIRA and save to TICKET.md
   "base_dir": "~/clade",
   "agent": "claude",
   "agent_flags": ["--dangerously-skip-permissions"],
+  "editor": "cursor",
   "auto_init": true,
   "repos": {
     "my-api": "~/repos/my-api",
@@ -526,11 +589,18 @@ PROJ-1234 detected. Please fetch from JIRA and save to TICKET.md
 | Field | Default | Description |
 |-------|---------|-------------|
 | `base_dir` | `~/clade` | Where experiments/projects are stored |
-| `agent` | `claude` | Command to launch (`claude`, `cursor .`, `code .`) |
+| `agent` | `claude` | AI agent command (has hooks, context injection) |
 | `agent_flags` | `[]` | Flags to pass to agent |
+| `editor` | `""` | Editor/IDE to open before agent (cursor, code, nvim) |
 | `auto_init` | `true` | Auto-run `clade init` on new worktrees |
 | `repos` | `{}` | Registered repos (name -> path mapping) |
 | `last_repo` | `null` | Last used repo (for picker default) |
+
+**Agent vs Editor:**
+- **Agent** = AI assistant (e.g., `claude`). Gets SessionStart hooks, context injection
+- **Editor** = IDE (e.g., `cursor`, `code`, `nvim`). Opens before agent launches
+
+Both can be used together. Editor opens first, then agent takes over the terminal.
 
 ---
 
@@ -723,6 +793,7 @@ clade/
 |   +-- cmd/                        # Command implementations
 |   |   +-- init.go                 # clade init
 |   |   +-- exp.go                  # clade exp
+|   |   +-- feat.go                 # clade feat
 |   |   +-- repo.go                 # clade repo add/list/remove
 |   |   +-- project.go              # clade project
 |   |   +-- list.go                 # clade list
@@ -783,23 +854,22 @@ Keep it minimal. No heavy frameworks.
 
 ## Implementation Priority
 
-### v0.1 (MVP)
-1. `clade exp` - Most valuable, daily use
-2. `clade repo add/list/remove` - Register repos for use from anywhere
-3. `clade list` - See what's active
-4. `clade cleanup` - Remove experiments
-5. `clade inject-context` - Makes hooks work
-6. `clade init` - Generate .claude/ config
+### v0.1 (MVP) - Done
+1. `clade exp` - Throwaway experiments
+2. `clade feat` - Features to merge
+3. `clade repo add/list/remove` - Register repos
+4. `clade list` - See what's active
+5. `clade cleanup` - Remove experiments
+6. `clade inject-context` - Makes hooks work
+7. `clade init` - Generate .claude/ config
+8. `clade resume` - Smart navigation
+9. `clade scratch` - No-git scratch folders
+10. `clade project` - Multi-repo workspaces
 
-### v0.2
-7. `clade resume` - Smart navigation
-8. `clade status` - Current context
-9. `clade project` - Multi-repo workspaces
-
-### v0.3
-10. Ticket detection (JIRA pattern matching)
-11. Stale experiment warnings
-12. Session tracking (read ~/.claude/projects/)
+### v0.2 (Planned)
+- Ticket detection (JIRA pattern matching)
+- Stale experiment warnings
+- Session tracking (read ~/.claude/projects/)
 
 ---
 
@@ -914,7 +984,8 @@ clade repo remove my-repo         # Unregister
 
 # Daily workflow
 clade init                        # Setup .claude/ with hooks
-clade exp try-something           # Quick experiment (in current repo)
+clade exp try-something           # Throwaway spike (exp/ branch)
+clade feat new-api                # Feature to merge (feat/ branch)
 clade exp try-redis -r my-repo    # Experiment in specific repo
 clade exp PROJ-1234               # Ticket investigation
 clade scratch doc-review          # No-git scratch folder
@@ -923,4 +994,11 @@ clade list                        # What's active
 clade status                      # Current context
 clade resume try-something        # Get back to work
 clade cleanup try-something       # Clean up when done
+
+# Useful flags
+clade exp foo -p                  # Force repo picker
+clade exp foo -b custom/branch    # Custom branch name
+clade exp foo -o cursor           # Open in Cursor IDE
+clade exp foo --no-agent          # Skip launching Claude
+clade resume foo -o code          # Open VS Code on resume
 ```

@@ -23,6 +23,20 @@ cd clade
 make install
 ```
 
+### Updating
+
+Go caches modules aggressively. To update to the latest version:
+
+```bash
+# Clear cache and reinstall
+GOPROXY=direct go install github.com/daniil-lyalko/clade/cmd/clade@latest
+
+# Or if you cloned the repo
+cd ~/path/to/clade
+git pull
+make install
+```
+
 ## Quick Start
 
 ```bash
@@ -50,14 +64,15 @@ clade cleanup try-redis
 | Command | Description |
 |---------|-------------|
 | `clade` | Interactive dashboard - see all experiments/projects |
-| `clade exp [name]` | Create isolated experiment worktree |
+| `clade exp [name]` | Create experiment worktree (`exp/` branch - throwaway spikes) |
+| `clade feat [name]` | Create feature worktree (`feat/` branch - intended to merge) |
 | `clade scratch [name]` | Create no-git scratch folder for docs/analysis |
 | `clade project [name]` | Create multi-repo workspace |
 | `clade project add [project] [repo]` | Add a repo to an existing project |
 | `clade init` | Setup SessionStart hooks in current repo |
 | `clade list` | Show all active experiments/projects |
 | `clade status` | Show context for current directory |
-| `clade resume [name]` | Resume an experiment or project |
+| `clade resume [name]` | Resume an experiment, feature, or project |
 | `clade open [name]` | Open experiment/project in editor (cursor, code, etc.) |
 | `clade cleanup [name]` | Remove worktree and delete branch |
 | `clade repo add/list/remove` | Manage registered repositories |
@@ -124,6 +139,7 @@ When Claude starts, it automatically receives:
   "base_dir": "~/clade",
   "agent": "claude",
   "agent_flags": [],
+  "editor": "",
   "auto_init": true,
   "repos": {},
   "repo_settings": {}
@@ -133,8 +149,9 @@ When Claude starts, it automatically receives:
 | Field | Default | Description |
 |-------|---------|-------------|
 | `base_dir` | `~/clade` | Where experiments/projects live |
-| `agent` | `claude` | Command to launch (claude, cursor, code) |
+| `agent` | `claude` | AI agent command (claude) |
 | `agent_flags` | `[]` | Extra flags for agent |
+| `editor` | `""` | Editor/IDE to open (cursor, code, nvim) |
 | `auto_init` | `true` | Auto-setup .claude/ in new worktrees |
 | `repos` | `{}` | Registered repos (name → path) |
 | `repo_settings` | `{}` | Per-repo settings (copy_files, etc.) |
@@ -175,39 +192,58 @@ clade project api-integration
 clade project add api-integration my-other-repo
 ```
 
-## Agent & Editor Selection
+## Agent & Editor
 
-Clade launches an agent after creating/resuming worktrees. Default is `claude`.
+Clade distinguishes between **agent** (AI assistant) and **editor** (IDE):
 
-**Supported agents:**
-| Agent | Command | Context Injection |
-|-------|---------|-------------------|
-| Claude Code | `claude` | Full support (SessionStart hooks) |
-| Cursor | `cursor` | Worktree management only |
-| VS Code | `code .` | Worktree management only |
+| Type | Examples | Purpose |
+|------|----------|---------|
+| **Agent** | `claude` | AI with hooks, context injection |
+| **Editor** | `cursor`, `code`, `nvim` | IDE/editor for viewing code |
 
-> Windsurf is not currently supported.
+Both can launch together - editor opens first, then agent takes over the terminal.
 
-**Flags:**
-- `--agent` / `-a` - Launch a specific agent (runs the command)
-- `--open` / `-o` - Open in editor *instead of* agent (resume only)
-
-```bash
-# Use different agent for this session
-clade exp try-redis --agent cursor
-
-# Set default in config
+**Configuration:**
+```json
 {
-  "agent": "cursor",
-  "agent_flags": ["--new-window"]
+  "agent": "claude",
+  "agent_flags": ["--dangerously-skip-permissions"],
+  "editor": "cursor"
 }
-
-# Resume but open in editor instead of launching agent
-clade resume my-exp --open cursor
-clade open my-experiment        # Shorthand for opening in editor
 ```
 
-> **Note:** Only Claude Code gets automatic context injection via hooks. Other editors still benefit from worktree management - you can reference DROPBAG.md manually.
+**Flags (available on exp, feat, scratch, project, resume):**
+| Flag | Description |
+|------|-------------|
+| `-o`, `--open` | Open specific editor (e.g., `-o cursor`) |
+| `--no-agent` | Skip launching the AI agent |
+| `--no-editor` | Skip opening the editor |
+
+**Additional flags for exp/feat:**
+| Flag | Description |
+|------|-------------|
+| `-p`, `--pick` | Force repo picker even if in a git repo |
+| `-b`, `--branch` | Custom branch name (skips prompt) |
+
+```bash
+# Create experiment in specific repo (force picker)
+clade exp try-redis -p
+
+# Custom branch name
+clade exp try-redis -b custom/my-branch
+clade feat new-api -b feature/PROJ-1234-new-api
+
+# Open Cursor, skip Claude
+clade exp try-redis -o cursor --no-agent
+
+# Launch both editor and agent
+clade resume my-exp -o cursor
+
+# Skip everything, just create the worktree
+clade exp try-redis --no-agent --no-editor
+```
+
+> **Note:** Only Claude Code gets automatic context injection via SessionStart hooks. Other editors still benefit from worktree management - reference DROPBAG.md manually.
 
 ## License
 
