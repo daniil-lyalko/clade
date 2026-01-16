@@ -15,9 +15,10 @@ import (
 )
 
 var (
-	resumeRepoFlag  string
-	resumeAgentFlag string
-	resumeOpenFlag  string
+	resumeRepoFlag   string
+	resumeAgentFlag  string
+	resumeOpenFlag   string
+	resumeBranchFlag string
 )
 
 var resumeCmd = &cobra.Command{
@@ -27,6 +28,9 @@ var resumeCmd = &cobra.Command{
 
 If the experiment exists in clade's state, it resumes directly.
 If not tracked but the branch exists (locally or remotely), it adopts it.
+
+By default, clade looks for branches named "exp/<name>". Use --branch to
+adopt any existing branch regardless of naming convention.
 
 The SessionStart hook will automatically inject context including:
   - DROPBAG.md from your last session
@@ -38,6 +42,7 @@ Examples:
   clade resume                       # Interactive picker
   clade resume try-redis             # Specific experiment
   clade resume try-redis -r backend  # Adopt branch from specific repo
+  clade resume price-formula -r backend --branch feat/price-formula-system
   clade resume try-redis -o cursor   # Resume + open Cursor IDE
   clade resume try-redis -o code     # Resume + open VS Code
   clade resume try-redis -o nvim     # Resume + open nvim`,
@@ -51,6 +56,7 @@ func init() {
 	resumeCmd.Flags().StringVarP(&resumeRepoFlag, "repo", "r", "", "Repository for adopting orphaned branches")
 	resumeCmd.Flags().StringVarP(&resumeAgentFlag, "agent", "a", "", "Agent to launch (overrides config)")
 	resumeCmd.Flags().StringVarP(&resumeOpenFlag, "open", "o", "", "Open editor alongside agent (cursor, code, nvim)")
+	resumeCmd.Flags().StringVarP(&resumeBranchFlag, "branch", "b", "", "Exact branch name to adopt (e.g., feat/my-feature)")
 }
 
 func runResume(cmd *cobra.Command, args []string) error {
@@ -266,7 +272,11 @@ func adoptOrphanedBranch(cfg *config.Config, state *config.State, name string) e
 		return err
 	}
 
-	branch := "exp/" + name
+	// Use explicit branch if provided, otherwise default to exp/ prefix
+	branch := resumeBranchFlag
+	if branch == "" {
+		branch = "exp/" + name
+	}
 	repoName := git.GetRepoName(repoPath)
 
 	ui.Info("Checking for branch '%s' in %s...", branch, repoName)

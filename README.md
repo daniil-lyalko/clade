@@ -26,7 +26,10 @@ make install
 ## Quick Start
 
 ```bash
-# Register your repos
+# Just run clade for an interactive dashboard
+clade
+
+# Or register your repos and go
 clade repo add ~/repos/my-project
 
 # Create an experiment
@@ -46,13 +49,16 @@ clade cleanup try-redis
 
 | Command | Description |
 |---------|-------------|
+| `clade` | Interactive dashboard - see all experiments/projects |
 | `clade exp [name]` | Create isolated experiment worktree |
 | `clade scratch [name]` | Create no-git scratch folder for docs/analysis |
 | `clade project [name]` | Create multi-repo workspace |
+| `clade project add [project] [repo]` | Add a repo to an existing project |
 | `clade init` | Setup SessionStart hooks in current repo |
 | `clade list` | Show all active experiments/projects |
 | `clade status` | Show context for current directory |
 | `clade resume [name]` | Resume an experiment or project |
+| `clade open [name]` | Open experiment/project in editor (cursor, code, etc.) |
 | `clade cleanup [name]` | Remove worktree and delete branch |
 | `clade repo add/list/remove` | Manage registered repositories |
 
@@ -164,7 +170,44 @@ clade project api-integration
 #   ├── backend/    (worktree from repo 1)
 #   ├── frontend/   (worktree from repo 2)
 #   └── shared/     (worktree from repo 3)
+
+# Add more repos later
+clade project add api-integration my-other-repo
 ```
+
+## Agent & Editor Selection
+
+Clade launches an agent after creating/resuming worktrees. Default is `claude`.
+
+**Supported agents:**
+| Agent | Command | Context Injection |
+|-------|---------|-------------------|
+| Claude Code | `claude` | Full support (SessionStart hooks) |
+| Cursor | `cursor` | Worktree management only |
+| VS Code | `code .` | Worktree management only |
+
+> Windsurf is not currently supported.
+
+**Flags:**
+- `--agent` / `-a` - Launch a specific agent (runs the command)
+- `--open` / `-o` - Open in editor *instead of* agent (resume only)
+
+```bash
+# Use different agent for this session
+clade exp try-redis --agent cursor
+
+# Set default in config
+{
+  "agent": "cursor",
+  "agent_flags": ["--new-window"]
+}
+
+# Resume but open in editor instead of launching agent
+clade resume my-exp --open cursor
+clade open my-experiment        # Shorthand for opening in editor
+```
+
+> **Note:** Only Claude Code gets automatic context injection via hooks. Other editors still benefit from worktree management - you can reference DROPBAG.md manually.
 
 ## License
 
