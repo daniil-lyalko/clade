@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/daniil-lyalko/clade/internal/config"
 	"github.com/daniil-lyalko/clade/internal/git"
+	"github.com/daniil-lyalko/clade/internal/hooks"
 	"github.com/daniil-lyalko/clade/internal/ui"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
@@ -17,6 +19,7 @@ var (
 	resumeRepoFlag     string
 	resumeEditorFlag   string
 	resumeBranchFlag   string
+	resumeAgentFlag    string
 	resumeNoAgentFlag  bool
 	resumeNoEditorFlag bool
 )
@@ -55,7 +58,7 @@ func init() {
 	rootCmd.AddCommand(resumeCmd)
 	resumeCmd.Flags().StringVarP(&resumeRepoFlag, "repo", "r", "", "Repository for adopting orphaned branches")
 	resumeCmd.Flags().StringVarP(&resumeEditorFlag, "open", "o", "", "Open editor/IDE (cursor, code, nvim)")
-	resumeCmd.Flags().StringVarP(&resumeEditorFlag, "editor", "e", "", "Alias for --open")
+	resumeCmd.Flags().StringVarP(&resumeAgentFlag, "agent", "a", "", "Override configured agent")
 	resumeCmd.Flags().StringVarP(&resumeBranchFlag, "branch", "b", "", "Exact branch name to adopt (e.g., feat/my-feature)")
 	resumeCmd.Flags().BoolVar(&resumeNoAgentFlag, "no-agent", false, "Skip launching the AI agent")
 	resumeCmd.Flags().BoolVar(&resumeNoEditorFlag, "no-editor", false, "Skip opening the editor")
@@ -79,7 +82,28 @@ func runResume(cmd *cobra.Command, args []string) error {
 
 	name := args[0]
 
-	// First, check if it's already tracked
+	// Build WorktreeOptions from flags
+	opts := WorktreeOptions{
+		EditorFlag:   resumeEditorFlag,
+		AgentFlag:    resumeAgentFlag,
+		NoAgentFlag:  resumeNoAgentFlag,
+		NoEditorFlag: resumeNoEditorFlag,
+	}
+
+	// First, check v2 worktrees
+	if repoName, wt := state.FindWorktreeByName(name); wt != nil {
+		// Find repo path from registered repos
+		repoPath := ""
+		for rName, rPath := range cfg.Repos {
+			if rName == repoName || filepath.Base(config.ExpandPath(rPath)) == repoName {
+				repoPath = config.ExpandPath(rPath)
+				break
+			}
+		}
+		return ResumeWorktree(cfg, state, repoName, wt, repoPath, opts)
+	}
+
+	// Check v1 experiments (legacy format)
 	for _, exp := range state.Experiments {
 		if exp.Name == name {
 			return resumeTrackedExperiment(cfg, state, exp)
@@ -103,9 +127,12 @@ func runResume(cmd *cobra.Command, args []string) error {
 }
 
 func resumeInteractive(cfg *config.Config, state *config.State) error {
-	if len(state.Experiments) == 0 && len(state.Projects) == 0 && len(state.Scratches) == 0 {
-		ui.Info("No experiments, projects, or scratch folders to resume")
-		ui.Detail("Create one with: clade exp <name>")
+	totalItems := len(state.Worktrees) + len(state.Experiments) + len(state.Projects) + len(state.Scratches)
+	if totalItems == 0 {
+		ui.Info("No worktrees, projects, or scratch folders to resume")
+		ui.Detail("Create one with: clade feature <name>")
+		ui.Detail("Or for bugs: clade bug <name>")
+		ui.Detail("Or for spikes: clade spike <name>")
 		ui.Detail("Or for no-git: clade scratch <name>")
 		ui.Detail("Or adopt an existing branch: clade resume <branch-name> -r <repo>")
 		return nil
@@ -114,13 +141,31 @@ func resumeInteractive(cfg *config.Config, state *config.State) error {
 	type pickItem struct {
 		Name     string
 		Path     string
-		Type     string
+		Type     string // "worktree", "experiment", "project", "scratch"
+		RepoName string // for worktrees
 		LastUsed time.Time
 		Display  string
 	}
 
 	var items []pickItem
 
+	// Add v2 worktrees
+	for repoName, worktrees := range state.Worktrees {
+		for _, wt := range worktrees {
+			age := formatAge(wt.LastUsed)
+			wtPath := config.WorktreePath(cfg, repoName, wt.Name)
+			items = append(items, pickItem{
+				Name:     wt.Name,
+				Path:     wtPath,
+				Type:     "worktree",
+				RepoName: repoName,
+				LastUsed: wt.LastUsed,
+				Display:  fmt.Sprintf("%s %s %s (%s)", wt.Name, ui.Dim("["+wt.Label+"]"), ui.Dim(repoName), ui.Dim(age)),
+			})
+		}
+	}
+
+	// Add v1 experiments (legacy)
 	for _, exp := range state.Experiments {
 		age := formatAge(exp.LastUsed)
 		items = append(items, pickItem{
@@ -128,7 +173,7 @@ func resumeInteractive(cfg *config.Config, state *config.State) error {
 			Path:     exp.Path,
 			Type:     "experiment",
 			LastUsed: exp.LastUsed,
-			Display:  fmt.Sprintf("%s %s (%s)", exp.Name, ui.Dim("[exp]"), ui.Dim(age)),
+			Display:  fmt.Sprintf("%s %s (%s)", exp.Name, ui.Dim("[legacy]"), ui.Dim(age)),
 		})
 	}
 
@@ -154,14 +199,10 @@ func resumeInteractive(cfg *config.Config, state *config.State) error {
 		})
 	}
 
-	// Sort by last used
-	for i := 0; i < len(items)-1; i++ {
-		for j := i + 1; j < len(items); j++ {
-			if items[j].LastUsed.After(items[i].LastUsed) {
-				items[i], items[j] = items[j], items[i]
-			}
-		}
-	}
+	// Sort by last used (most recent first)
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].LastUsed.After(items[j].LastUsed)
+	})
 
 	var displayItems []string
 	for _, item := range items {
@@ -179,7 +220,27 @@ func resumeInteractive(cfg *config.Config, state *config.State) error {
 		return err
 	}
 
+	opts := WorktreeOptions{
+		EditorFlag:   resumeEditorFlag,
+		AgentFlag:    resumeAgentFlag,
+		NoAgentFlag:  resumeNoAgentFlag,
+		NoEditorFlag: resumeNoEditorFlag,
+	}
+
 	switch items[idx].Type {
+	case "worktree":
+		wt := state.GetWorktree(items[idx].RepoName, items[idx].Name)
+		if wt != nil {
+			// Find repo path
+			repoPath := ""
+			for rName, rPath := range cfg.Repos {
+				if rName == items[idx].RepoName || filepath.Base(config.ExpandPath(rPath)) == items[idx].RepoName {
+					repoPath = config.ExpandPath(rPath)
+					break
+				}
+			}
+			return ResumeWorktree(cfg, state, items[idx].RepoName, wt, repoPath, opts)
+		}
 	case "experiment":
 		for _, exp := range state.Experiments {
 			if exp.Name == items[idx].Name {
@@ -230,7 +291,32 @@ func resumeTrackedExperiment(cfg *config.Config, state *config.State, exp *confi
 	ui.Header("Resuming: %s", exp.Name)
 	ui.KeyValue("Path", exp.Path)
 
-	return launchSession(cfg, exp.Path, resumeEditorFlag, resumeNoAgentFlag, resumeNoEditorFlag)
+	// Run on_resume hooks (for legacy experiments too)
+	if hooks.HasHooks(hooks.OnResume, exp.Repo) {
+		ui.Info("Running on_resume hooks...")
+		hookEnv := &hooks.Env{
+			Type:     "experiment",
+			Name:     exp.Name,
+			Path:     exp.Path,
+			RepoName: filepath.Base(exp.Repo),
+			RepoPath: exp.Repo,
+			Branch:   exp.Branch,
+			Ticket:   exp.Ticket,
+		}
+		results := hooks.RunHooks(hooks.OnResume, hookEnv)
+		for _, r := range results {
+			if r.Error != nil {
+				ui.Warn("Hook failed: %s - %v", r.Command, r.Error)
+			}
+		}
+	}
+
+	return launchWorktreeSession(cfg, exp.Repo, exp.Path, WorktreeOptions{
+		EditorFlag:   resumeEditorFlag,
+		AgentFlag:    resumeAgentFlag,
+		NoAgentFlag:  resumeNoAgentFlag,
+		NoEditorFlag: resumeNoEditorFlag,
+	})
 }
 
 func resumeTrackedProject(cfg *config.Config, state *config.State, proj *config.Project) error {
@@ -257,7 +343,24 @@ func resumeTrackedProject(cfg *config.Config, state *config.State, proj *config.
 	ui.Header("Resuming: %s", proj.Name)
 	ui.KeyValue("Path", proj.Path)
 
-	return launchProjectSession(cfg, proj, resumeEditorFlag, resumeNoAgentFlag, resumeNoEditorFlag)
+	// Run on_resume hooks for each repo in project
+	for _, repo := range proj.Repos {
+		if hooks.HasHooks(hooks.OnResume, repo.Source) {
+			repoPath := filepath.Join(proj.Path, repo.Name)
+			hookEnv := &hooks.Env{
+				Type:        "project",
+				Name:        proj.Name,
+				Path:        repoPath,
+				RepoName:    repo.Name,
+				RepoPath:    repo.Source,
+				Branch:      proj.Branch,
+				ProjectName: proj.Name,
+			}
+			hooks.RunHooks(hooks.OnResume, hookEnv)
+		}
+	}
+
+	return launchProjectSessionWithAgent(cfg, proj, resumeEditorFlag, resumeAgentFlag, resumeNoAgentFlag, resumeNoEditorFlag)
 }
 
 func adoptOrphanedBranch(cfg *config.Config, state *config.State, name string) error {
@@ -404,7 +507,28 @@ func resumeTrackedScratch(cfg *config.Config, state *config.State, scratch *conf
 	ui.Header("Resuming: %s", scratch.Name)
 	ui.KeyValue("Path", scratch.Path)
 
-	return launchSession(cfg, scratch.Path, resumeEditorFlag, resumeNoAgentFlag, resumeNoEditorFlag)
+	// Run on_resume hooks (scratches don't have repo-specific hooks)
+	if hooks.HasHooks(hooks.OnResume, "") {
+		ui.Info("Running on_resume hooks...")
+		hookEnv := &hooks.Env{
+			Type: "scratch",
+			Name: scratch.Name,
+			Path: scratch.Path,
+		}
+		results := hooks.RunHooks(hooks.OnResume, hookEnv)
+		for _, r := range results {
+			if r.Error != nil {
+				ui.Warn("Hook failed: %s - %v", r.Command, r.Error)
+			}
+		}
+	}
+
+	return launchWorktreeSession(cfg, "", scratch.Path, WorktreeOptions{
+		EditorFlag:   resumeEditorFlag,
+		AgentFlag:    resumeAgentFlag,
+		NoAgentFlag:  resumeNoAgentFlag,
+		NoEditorFlag: resumeNoEditorFlag,
+	})
 }
 
 // completeResumableNames provides shell completion for experiment/project/scratch names

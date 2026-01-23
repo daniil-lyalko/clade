@@ -2,13 +2,22 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/manifoldco/promptui"
 )
 
 // RepoSettings holds per-repo configuration
 type RepoSettings struct {
 	CopyFiles []string `json:"copy_files,omitempty"`
+}
+
+// LabelConfig defines a custom label configuration
+type LabelConfig struct {
+	BranchPrefix  string `json:"branch_prefix"`
+	MergeExpected bool   `json:"merge_expected"`
 }
 
 // Config holds the user configuration for clade
@@ -22,6 +31,7 @@ type Config struct {
 	RepoSettings       map[string]RepoSettings `json:"repo_settings,omitempty"`
 	LastRepo           string                  `json:"last_repo"`
 	TmuxSplitDirection string                  `json:"tmux_split_direction,omitempty"`
+	CustomLabels       map[string]LabelConfig  `json:"custom_labels,omitempty"`
 }
 
 // DefaultConfig returns a config with default values
@@ -29,19 +39,32 @@ func DefaultConfig() *Config {
 	homeDir, _ := os.UserHomeDir()
 	return &Config{
 		BaseDir:            filepath.Join(homeDir, "clade"),
-		Agent:              "claude",
+		Agent:              "",  // Set by first-run wizard
 		AgentFlags:         []string{},
-		Editor:             "",
+		Editor:             "",  // Set by first-run wizard
 		AutoInit:           true,
 		Repos:              make(map[string]string),
 		RepoSettings:       make(map[string]RepoSettings),
 		LastRepo:           "",
 		TmuxSplitDirection: "horizontal",
+		CustomLabels:       make(map[string]LabelConfig),
 	}
 }
 
 // ConfigPath returns the path to the config file
+// Always uses ~/.config/clade/ for consistency across platforms
 func ConfigPath() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(homeDir, ".config", "clade", "config.json"), nil
+}
+
+// legacyConfigPath returns the old platform-specific config path (for migration)
+// macOS: ~/Library/Application Support/clade/config.json
+// Linux: ~/.config/clade/config.json (same as new path)
+func legacyConfigPath() (string, error) {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
@@ -61,13 +84,26 @@ func Load() (*Config, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// Config doesn't exist, save default and return
-			if err := cfg.Save(); err != nil {
-				return nil, err
+			// Check for legacy config path (platform-specific) and migrate
+			if migrated, migrateErr := migrateFromLegacyPath(configPath); migrateErr == nil && migrated {
+				// Successfully migrated - reload from new path
+				data, err = os.ReadFile(configPath)
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				// No legacy config or migration failed - run first-run wizard
+				if err := runFirstRunWizard(cfg); err != nil {
+					return nil, err
+				}
+				if err := cfg.Save(); err != nil {
+					return nil, err
+				}
+				return cfg, nil
 			}
-			return cfg, nil
+		} else {
+			return nil, err
 		}
-		return nil, err
 	}
 
 	if err := json.Unmarshal(data, cfg); err != nil {
@@ -81,8 +117,98 @@ func Load() (*Config, error) {
 	if cfg.RepoSettings == nil {
 		cfg.RepoSettings = make(map[string]RepoSettings)
 	}
+	if cfg.CustomLabels == nil {
+		cfg.CustomLabels = make(map[string]LabelConfig)
+	}
 
 	return cfg, nil
+}
+
+// migrateFromLegacyPath checks for config at legacy platform-specific path and migrates to ~/.config/clade/
+// Returns (migrated bool, error)
+func migrateFromLegacyPath(newPath string) (bool, error) {
+	legacyPath, err := legacyConfigPath()
+	if err != nil {
+		return false, err
+	}
+
+	// If legacy path is the same as new path (Linux), no migration needed
+	if legacyPath == newPath {
+		return false, nil
+	}
+
+	// Check if legacy config exists
+	data, err := os.ReadFile(legacyPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil // No legacy config
+		}
+		return false, err
+	}
+
+	// Create new directory and copy config
+	if err := os.MkdirAll(filepath.Dir(newPath), 0755); err != nil {
+		return false, err
+	}
+
+	if err := os.WriteFile(newPath, data, 0644); err != nil {
+		return false, err
+	}
+
+	// Migration successful - try to remove old file (don't fail if this doesn't work)
+	os.Remove(legacyPath)
+	// Try to remove old directory if empty
+	os.Remove(filepath.Dir(legacyPath))
+
+	return true, nil
+}
+
+// runFirstRunWizard prompts the user for initial configuration
+func runFirstRunWizard(cfg *Config) error {
+	fmt.Println()
+	fmt.Println("  Welcome to clade! Let's set up your preferences.")
+	fmt.Println()
+
+	// Ask about AI coding tool
+	toolPrompt := promptui.Select{
+		Label: "What AI coding tool do you use",
+		Items: []string{
+			"Claude Code (terminal)",
+			"Cursor (IDE)",
+			"Both Claude Code and Cursor",
+			"Neither (just worktree management)",
+		},
+	}
+
+	idx, _, err := toolPrompt.Run()
+	if err != nil {
+		// User cancelled - use defaults
+		return nil
+	}
+
+	switch idx {
+	case 0: // Claude Code
+		cfg.Agent = "claude"
+		cfg.AgentFlags = []string{"--dangerously-skip-permissions"}
+		cfg.Editor = ""
+	case 1: // Cursor
+		cfg.Agent = ""
+		cfg.Editor = "cursor"
+	case 2: // Both
+		cfg.Agent = "claude"
+		cfg.AgentFlags = []string{"--dangerously-skip-permissions"}
+		cfg.Editor = "cursor"
+	case 3: // Neither
+		cfg.Agent = ""
+		cfg.Editor = ""
+	}
+
+	fmt.Println()
+	fmt.Println("  Configuration saved to ~/.config/clade/config.json")
+	fmt.Println("  You can edit it anytime to change these settings.")
+	fmt.Println()
+
+	return nil
 }
 
 // Save writes the config to disk
@@ -119,7 +245,13 @@ func (c *Config) GetBaseDir() string {
 	return ExpandPath(c.BaseDir)
 }
 
-// ExperimentsDir returns the path to experiments directory
+// ReposDir returns the path to repos directory (v0.3+ repo-centric structure)
+func (c *Config) ReposDir() string {
+	return filepath.Join(c.GetBaseDir(), "repos")
+}
+
+// ExperimentsDir returns the path to experiments directory (legacy v0.2 structure)
+// Deprecated: Use ReposDir() for new worktrees
 func (c *Config) ExperimentsDir() string {
 	return filepath.Join(c.GetBaseDir(), "experiments")
 }
@@ -148,4 +280,29 @@ func (c *Config) SetRepoCopyFiles(repoPath string, files []string) {
 		c.RepoSettings = make(map[string]RepoSettings)
 	}
 	c.RepoSettings[repoPath] = RepoSettings{CopyFiles: files}
+}
+
+// BuiltInLabels returns the built-in label configurations
+func BuiltInLabels() map[string]LabelConfig {
+	return map[string]LabelConfig{
+		"feature": {BranchPrefix: "feat", MergeExpected: true},
+		"bug":     {BranchPrefix: "fix", MergeExpected: true},
+		"spike":   {BranchPrefix: "spike", MergeExpected: false},
+		"chore":   {BranchPrefix: "chore", MergeExpected: true},
+		"hotfix":  {BranchPrefix: "hotfix", MergeExpected: true},
+		"docs":    {BranchPrefix: "docs", MergeExpected: true},
+	}
+}
+
+// GetLabelConfig returns the configuration for a label (built-in or custom)
+func (c *Config) GetLabelConfig(label string) (LabelConfig, bool) {
+	// Check built-in labels first
+	if cfg, ok := BuiltInLabels()[label]; ok {
+		return cfg, true
+	}
+	// Check custom labels
+	if cfg, ok := c.CustomLabels[label]; ok {
+		return cfg, true
+	}
+	return LabelConfig{}, false
 }

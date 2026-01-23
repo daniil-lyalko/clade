@@ -232,3 +232,35 @@ func InitRepo(repoPath string) error {
 	gitignorePath := filepath.Join(repoPath, ".gitignore")
 	return updateGitignore(gitignorePath)
 }
+
+// EnsureClaudeConfig ensures required .claude files exist, filling in missing ones.
+// This is called AFTER copying .claude/ from source to handle partial configs.
+func EnsureClaudeConfig(repoPath string) error {
+	claudeDir := filepath.Join(repoPath, ".claude")
+	commandsDir := filepath.Join(claudeDir, "commands")
+
+	// Ensure directories exist
+	if err := os.MkdirAll(commandsDir, 0755); err != nil {
+		return err
+	}
+
+	// Ensure settings.json exists
+	settingsPath := filepath.Join(claudeDir, "settings.json")
+	if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
+		if err := writeSettingsJSON(settingsPath); err != nil {
+			return err
+		}
+	}
+
+	// Ensure drop.md exists
+	dropPath := filepath.Join(commandsDir, "drop.md")
+	if _, err := os.Stat(dropPath); os.IsNotExist(err) {
+		if err := writeDropCommand(dropPath); err != nil {
+			return err
+		}
+	}
+
+	// Ensure gitignore entries
+	gitignorePath := filepath.Join(repoPath, ".gitignore")
+	return updateGitignore(gitignorePath)
+}

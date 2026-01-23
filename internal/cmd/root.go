@@ -12,8 +12,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Version is set at build time via -ldflags
+var Version = "dev"
+
+var experimentalFlag bool
+var versionFlag bool
+
 var rootCmd = &cobra.Command{
-	Use:   "clade",
+	Use:   "clade [name]",
 	Short: "Claude Code Workflow CLI",
 	Long: `Clade manages git worktrees and context for AI coding sessions.
 
@@ -21,11 +27,22 @@ Named after biological clades (branching groups sharing common ancestry) -
 perfect metaphor for worktree branches.
 
 Quick start:
-  clade exp try-redis       # Create isolated experiment
-  clade list                # See what's active
-  clade resume try-redis    # Get back to work
-  clade cleanup try-redis   # Clean up when done`,
-	RunE: runInteractiveDashboard,
+  clade foo                       # Create worktree (branch: foo)
+  clade foo -t spike              # Create spike worktree (branch: spike/foo)
+  clade list                      # See what's active
+  clade resume foo                # Get back to work
+  clade cleanup foo               # Clean up when done
+
+Shortcut:
+  clade <name>                    # Same as: clade work <name>`,
+	Args:                  cobra.ArbitraryArgs,
+	DisableFlagsInUseLine: true,
+	RunE:                  runRoot,
+}
+
+// IsExperimentalEnabled returns true if --experimental flag is set
+func IsExperimentalEnabled() bool {
+	return experimentalFlag
 }
 
 // Execute runs the root command
@@ -34,8 +51,38 @@ func Execute() error {
 }
 
 func init() {
-	// Global flags can be added here
-	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file")
+	// Global experimental flag for hidden features
+	rootCmd.PersistentFlags().BoolVar(&experimentalFlag, "experimental", false, "Enable experimental features (project command)")
+
+	// Version flag
+	rootCmd.Flags().BoolVarP(&versionFlag, "version", "v", false, "Print version and exit")
+
+	// Add work command flags to root so `clade foo -t spike` works
+	rootCmd.Flags().StringVarP(&workTypeFlag, "type", "t", "", "Type of worktree (feature, bug, spike, chore, hotfix, docs, or custom)")
+	rootCmd.Flags().StringVarP(&workRepoFlag, "repo", "r", "", "Repository path or registered name")
+	rootCmd.Flags().BoolVarP(&workPickFlag, "pick", "p", false, "Force repo picker")
+	rootCmd.Flags().StringVarP(&workBranchFlag, "branch", "b", "", "Custom branch name")
+	rootCmd.Flags().StringVarP(&workEditorFlag, "open", "o", "", "Open editor/IDE (cursor, code, nvim)")
+	rootCmd.Flags().StringVarP(&workAgentFlag, "agent", "a", "", "Override configured agent")
+	rootCmd.Flags().BoolVar(&workNoAgentFlag, "no-agent", false, "Skip launching the AI agent")
+	rootCmd.Flags().BoolVar(&workNoEditorFlag, "no-editor", false, "Skip opening the editor")
+}
+
+// runRoot handles the root command - either delegates to work or shows interactive dashboard
+func runRoot(cmd *cobra.Command, args []string) error {
+	// Handle --version flag
+	if versionFlag {
+		fmt.Printf("clade %s\n", Version)
+		return nil
+	}
+
+	// If a name is provided, delegate to work command
+	if len(args) > 0 {
+		return runWork(cmd, args)
+	}
+
+	// No args - show interactive dashboard
+	return runInteractiveDashboard(cmd, args)
 }
 
 // runInteractiveDashboard shows a dashboard and action picker when clade is run with no args
@@ -60,15 +107,33 @@ func runInteractiveDashboard(cmd *cobra.Command, args []string) error {
 func showDashboard(state *config.State) {
 	hasContent := false
 
-	// Show experiments (most recent first, limit to 5)
+	// Show worktrees grouped by repo (v2 format - most recent first, limit to 5)
+	if len(state.Worktrees) > 0 {
+		hasContent = true
+		ui.Header("Active worktrees:")
+		worktrees := sortWorktreesByLastUsed(state.Worktrees)
+		shown := 0
+		for _, wt := range worktrees {
+			if shown >= 5 {
+				total := countTotalWorktrees(state.Worktrees)
+				remaining := total - 5
+				ui.Detail("%s", ui.Dim(fmt.Sprintf("  ... and %d more", remaining)))
+				break
+			}
+			printDashboardWorktree(wt)
+			shown++
+		}
+	}
+
+	// Show legacy experiments (most recent first, limit to 3)
 	if len(state.Experiments) > 0 {
 		hasContent = true
-		ui.Header("Active experiments:")
+		ui.Header("Legacy experiments:")
 		exps := sortExperimentsByLastUsed(state.Experiments)
 		shown := 0
 		for _, exp := range exps {
-			if shown >= 5 {
-				remaining := len(exps) - 5
+			if shown >= 3 {
+				remaining := len(exps) - 3
 				ui.Detail("%s", ui.Dim(fmt.Sprintf("  ... and %d more", remaining)))
 				break
 			}
@@ -77,10 +142,10 @@ func showDashboard(state *config.State) {
 		}
 	}
 
-	// Show projects
+	// Show projects (only if experimental or they exist)
 	if len(state.Projects) > 0 {
 		hasContent = true
-		ui.Header("Active projects:")
+		ui.Header("Projects:")
 		for _, proj := range state.Projects {
 			printDashboardProject(proj)
 		}
@@ -105,10 +170,73 @@ func showDashboard(state *config.State) {
 
 	if !hasContent {
 		fmt.Println()
-		ui.Info("No active experiments, projects, or scratch folders")
+		ui.Info("No active worktrees")
+		ui.Detail("Create one with: clade <name>")
 	}
 
 	fmt.Println()
+}
+
+// worktreeWithRepo holds a worktree and its repo name for sorting
+type worktreeWithRepo struct {
+	RepoName string
+	Worktree *config.Worktree
+}
+
+func printDashboardWorktree(wt worktreeWithRepo) {
+	age := formatAge(wt.Worktree.LastUsed)
+
+	// Check if stale
+	staleMarker := ""
+	if time.Since(wt.Worktree.LastUsed) > 7*24*time.Hour {
+		staleMarker = " " + ui.Yellow("(stale)")
+	}
+
+	label := wt.Worktree.Label
+	if label == "" || label == "worktree" {
+		label = ""
+	} else {
+		label = "[" + label + "] "
+	}
+
+	fmt.Printf("  %s %s%s - %s%s\n",
+		ui.Cyan(wt.Worktree.Name),
+		ui.Dim(label),
+		ui.Dim("("+wt.RepoName+")"),
+		ui.Dim(age),
+		staleMarker,
+	)
+}
+
+func sortWorktreesByLastUsed(worktrees map[string]map[string]*config.Worktree) []worktreeWithRepo {
+	var result []worktreeWithRepo
+	for repoName, repoWorktrees := range worktrees {
+		for _, wt := range repoWorktrees {
+			result = append(result, worktreeWithRepo{
+				RepoName: repoName,
+				Worktree: wt,
+			})
+		}
+	}
+
+	// Sort by last used (descending)
+	for i := 0; i < len(result)-1; i++ {
+		for j := i + 1; j < len(result); j++ {
+			if result[j].Worktree.LastUsed.After(result[i].Worktree.LastUsed) {
+				result[i], result[j] = result[j], result[i]
+			}
+		}
+	}
+
+	return result
+}
+
+func countTotalWorktrees(worktrees map[string]map[string]*config.Worktree) int {
+	count := 0
+	for _, repoWorktrees := range worktrees {
+		count += len(repoWorktrees)
+	}
+	return count
 }
 
 func printDashboardExperiment(exp *config.Experiment) {
@@ -176,11 +304,11 @@ func showActionPicker(cfg *config.Config, state *config.State) error {
 	actions := []action{}
 
 	// Only show "Resume" if there's something to resume
-	hasItems := len(state.Experiments) > 0 || len(state.Projects) > 0 || len(state.Scratches) > 0
+	hasItems := len(state.Worktrees) > 0 || len(state.Experiments) > 0 || len(state.Projects) > 0 || len(state.Scratches) > 0
 	if hasItems {
 		actions = append(actions, action{
 			Name:        "Resume",
-			Description: "Resume an experiment, project, or scratch",
+			Description: "Continue working on an existing worktree",
 			Handler: func() error {
 				return resumeInteractive(cfg, state)
 			},
@@ -189,32 +317,9 @@ func showActionPicker(cfg *config.Config, state *config.State) error {
 
 	actions = append(actions,
 		action{
-			Name:        "New experiment",
-			Description: "Throwaway spike (exp/ branch)",
-			Handler: func() error {
-				return runExp(expCmd, []string{})
-			},
-		},
-		action{
-			Name:        "New feature",
-			Description: "Feature to merge (feat/ branch)",
-			Handler: func() error {
-				return runFeat(featCmd, []string{})
-			},
-		},
-		action{
-			Name:        "New project",
-			Description: "Create a multi-repo workspace",
-			Handler: func() error {
-				return runProject(projectCmd, []string{})
-			},
-		},
-		action{
-			Name:        "New scratch",
-			Description: "Create a no-git scratch folder",
-			Handler: func() error {
-				return runScratch(scratchCmd, []string{})
-			},
+			Name:        "New",
+			Description: "Create a new worktree",
+			Handler:     runInteractiveNew,
 		},
 		action{
 			Name:        "Register repo",
@@ -227,20 +332,12 @@ func showActionPicker(cfg *config.Config, state *config.State) error {
 	if hasItems {
 		actions = append(actions, action{
 			Name:        "Clean up",
-			Description: "Remove an experiment, project, or scratch",
+			Description: "Remove a worktree or scratch folder",
 			Handler: func() error {
 				return runCleanup(cleanupCmd, []string{})
 			},
 		})
 	}
-
-	actions = append(actions, action{
-		Name:        "View all",
-		Description: "Show detailed list of all items",
-		Handler: func() error {
-			return runList(listCmd, []string{})
-		},
-	})
 
 	actions = append(actions, action{
 		Name:        "Exit",
@@ -261,7 +358,7 @@ func showActionPicker(cfg *config.Config, state *config.State) error {
 	prompt := promptui.Select{
 		Label: "What would you like to do",
 		Items: items,
-		Size:  10,
+		Size:  8,
 	}
 
 	idx, _, err := prompt.Run()
@@ -271,6 +368,46 @@ func showActionPicker(cfg *config.Config, state *config.State) error {
 	}
 
 	return actions[idx].Handler()
+}
+
+// runInteractiveNew prompts for name and optional type prefix
+func runInteractiveNew() error {
+	// First ask for the name
+	namePrompt := promptui.Prompt{
+		Label: "Worktree name",
+	}
+	name, err := namePrompt.Run()
+	if err != nil {
+		return nil // User cancelled
+	}
+	if name == "" {
+		return fmt.Errorf("name is required")
+	}
+
+	// Then ask if they want a branch prefix
+	typePrompt := promptui.Select{
+		Label: "Branch prefix",
+		Items: []string{
+			fmt.Sprintf("None  %s", ui.Dim("branch: "+name)),
+			fmt.Sprintf("spike  %s", ui.Dim("branch: spike/"+name)),
+			fmt.Sprintf("feature  %s", ui.Dim("branch: feat/"+name)),
+			fmt.Sprintf("bug  %s", ui.Dim("branch: fix/"+name)),
+			fmt.Sprintf("chore  %s", ui.Dim("branch: chore/"+name)),
+		},
+		Size: 5,
+	}
+
+	idx, _, err := typePrompt.Run()
+	if err != nil {
+		return nil // User cancelled
+	}
+
+	// Map selection to type flag
+	types := []string{"", "spike", "feature", "bug", "chore"}
+	workTypeFlag = types[idx]
+	defer func() { workTypeFlag = "" }()
+
+	return runWork(workCmd, []string{name})
 }
 
 // runInteractiveRepoAdd prompts for a path and adds a repo

@@ -2,12 +2,15 @@
 
 BINARY=clade
 INSTALL_DIR=$(HOME)/.local/bin
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+LDFLAGS=-ldflags "-X github.com/daniil-lyalko/clade/internal/cmd.Version=$(VERSION)"
 
 build:
-	go build -o $(BINARY) ./cmd/clade
+	go build $(LDFLAGS) -o $(BINARY) ./cmd/clade
 
 install: build
 	mkdir -p $(INSTALL_DIR)
+	rm -f $(INSTALL_DIR)/$(BINARY)
 	cp $(BINARY) $(INSTALL_DIR)/$(BINARY)
 	@echo "Installed to $(INSTALL_DIR)/$(BINARY)"
 	@echo "Make sure $(INSTALL_DIR) is in your PATH"

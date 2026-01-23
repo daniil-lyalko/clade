@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/daniil-lyalko/clade/internal/config"
 	"github.com/daniil-lyalko/clade/internal/git"
+	"github.com/daniil-lyalko/clade/internal/hooks"
 	"github.com/daniil-lyalko/clade/internal/ui"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
@@ -45,27 +47,44 @@ func runCleanup(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load state: %w", err)
 	}
 
+	// Count total items
+	totalWorktrees := 0
+	for _, wts := range state.Worktrees {
+		totalWorktrees += len(wts)
+	}
+
 	// Check if there's anything to clean up
-	if len(state.Experiments) == 0 && len(state.Projects) == 0 && len(state.Scratches) == 0 {
-		ui.Info("No experiments, projects, or scratch folders to clean up")
+	if totalWorktrees == 0 && len(state.Experiments) == 0 && len(state.Projects) == 0 && len(state.Scratches) == 0 {
+		ui.Info("No worktrees, projects, or scratch folders to clean up")
 		return nil
 	}
 
 	var targetName string
+	var targetRepoName string // for v2 worktrees
 	if len(args) > 0 {
 		targetName = args[0]
 	} else {
-		// Interactive picker combining experiments, projects, and scratches
+		// Interactive picker
 		type pickItem struct {
-			Name string
-			Type string // "experiment", "project", or "scratch"
+			Name     string
+			Type     string // "worktree", "experiment", "project", or "scratch"
+			RepoName string // for v2 worktrees
 		}
 		var items []pickItem
 		var displayItems []string
 
+		// Add v2 worktrees
+		for repoName, worktrees := range state.Worktrees {
+			for _, wt := range worktrees {
+				items = append(items, pickItem{Name: wt.Name, Type: "worktree", RepoName: repoName})
+				displayItems = append(displayItems, fmt.Sprintf("%s %s %s", wt.Name, ui.Dim("["+wt.Label+"]"), ui.Dim(repoName)))
+			}
+		}
+
+		// Add v1 experiments (legacy)
 		for _, exp := range state.Experiments {
 			items = append(items, pickItem{Name: exp.Name, Type: "experiment"})
-			displayItems = append(displayItems, fmt.Sprintf("%s %s", exp.Name, ui.Dim("[exp]")))
+			displayItems = append(displayItems, fmt.Sprintf("%s %s", exp.Name, ui.Dim("[legacy]")))
 		}
 		for _, proj := range state.Projects {
 			items = append(items, pickItem{Name: proj.Name, Type: "project"})
@@ -76,6 +95,11 @@ func runCleanup(cmd *cobra.Command, args []string) error {
 			displayItems = append(displayItems, fmt.Sprintf("%s %s", scratch.Name, ui.Dim("[scratch]")))
 		}
 
+		// Sort by name
+		sort.Slice(displayItems, func(i, j int) bool {
+			return displayItems[i] < displayItems[j]
+		})
+
 		prompt := promptui.Select{
 			Label: "Select to clean up",
 			Items: displayItems,
@@ -85,9 +109,19 @@ func runCleanup(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		targetName = items[idx].Name
+		targetRepoName = items[idx].RepoName
 	}
 
-	// Try to find as experiment first, then as project, then as scratch
+	// Try to find as v2 worktree first
+	if repoName, wt := state.FindWorktreeByName(targetName); wt != nil {
+		// Use the found repo name if not already set
+		if targetRepoName == "" {
+			targetRepoName = repoName
+		}
+		return cleanupWorktree(cfg, state, targetRepoName, wt)
+	}
+
+	// Try v1 experiments (legacy)
 	for key, exp := range state.Experiments {
 		if exp.Name == targetName {
 			return cleanupExperiment(cfg, state, key, exp)
@@ -106,14 +140,142 @@ func runCleanup(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	return fmt.Errorf("'%s' not found as experiment, project, or scratch", targetName)
+	return fmt.Errorf("'%s' not found as worktree, project, or scratch", targetName)
+}
+
+func cleanupWorktree(cfg *config.Config, state *config.State, repoName string, wt *config.Worktree) error {
+	wtPath := config.WorktreePath(cfg, repoName, wt.Name)
+
+	// Find repo path from registered repos
+	repoPath := ""
+	for rName, rPath := range cfg.Repos {
+		if rName == repoName || filepath.Base(config.ExpandPath(rPath)) == repoName {
+			repoPath = config.ExpandPath(rPath)
+			break
+		}
+	}
+
+	ui.Header("Worktree: %s", wt.Name)
+	ui.KeyValue("Path", wtPath)
+	ui.KeyValue("Branch", wt.Branch)
+	ui.KeyValue("Label", wt.Label)
+	fmt.Println()
+
+	// Run on_remove hooks
+	if hooks.HasHooks(hooks.OnRemove, repoPath) {
+		ui.Info("Running on_remove hooks...")
+		hookEnv := &hooks.Env{
+			Type:     wt.Label,
+			Name:     wt.Name,
+			Path:     wtPath,
+			RepoName: repoName,
+			RepoPath: repoPath,
+			Branch:   wt.Branch,
+			Ticket:   wt.Ticket,
+		}
+		results := hooks.RunHooks(hooks.OnRemove, hookEnv)
+		for _, r := range results {
+			if r.Error != nil {
+				ui.Warn("Hook failed: %s - %v", r.Command, r.Error)
+			}
+		}
+	}
+
+	// Check for uncommitted changes
+	if hasChanges, _ := git.HasUncommittedChanges(wtPath); hasChanges {
+		ui.Warn("Uncommitted changes detected")
+
+		if !cleanupForceFlag {
+			prompt := promptui.Prompt{
+				Label:     "Discard changes and continue",
+				IsConfirm: true,
+			}
+			_, err := prompt.Run()
+			if err != nil {
+				ui.Info("Cleanup cancelled")
+				return nil
+			}
+		}
+	}
+
+	// Remove worktree
+	ui.Info("Removing worktree...")
+	if repoPath != "" {
+		if err := git.RemoveWorktree(repoPath, wtPath); err != nil {
+			// Try removing directory manually if worktree removal fails
+			if err := os.RemoveAll(wtPath); err != nil {
+				return fmt.Errorf("failed to remove worktree: %w", err)
+			}
+		}
+	} else {
+		// No repo path found, just remove directory
+		if err := os.RemoveAll(wtPath); err != nil {
+			return fmt.Errorf("failed to remove worktree: %w", err)
+		}
+	}
+	ui.Success("Worktree removed")
+
+	// Ask about branch deletion
+	deleteBranch := cleanupForceFlag
+	if !cleanupForceFlag && repoPath != "" {
+		prompt := promptui.Prompt{
+			Label:     fmt.Sprintf("Delete branch %s", wt.Branch),
+			IsConfirm: true,
+		}
+		_, err := prompt.Run()
+		deleteBranch = err == nil
+	}
+
+	if deleteBranch && repoPath != "" {
+		ui.Info("Deleting branch...")
+		if err := git.DeleteBranch(repoPath, wt.Branch); err != nil {
+			ui.Warn("Failed to delete branch: %v", err)
+		} else {
+			ui.Success("Branch deleted")
+		}
+	}
+
+	// Update state
+	state.RemoveWorktree(repoName, wt.Name)
+	if err := state.Save(cfg); err != nil {
+		ui.Warn("Failed to save state: %v", err)
+	}
+
+	// Clean up empty repo directory
+	repoDir := filepath.Join(cfg.ReposDir(), repoName)
+	if entries, err := os.ReadDir(repoDir); err == nil && len(entries) == 0 {
+		os.Remove(repoDir)
+	}
+
+	ui.Success("Cleaned up worktree '%s'", wt.Name)
+	return nil
 }
 
 func cleanupExperiment(cfg *config.Config, state *config.State, key string, exp *config.Experiment) error {
-	ui.Header("Experiment: %s", exp.Name)
+	ui.Header("Experiment (legacy): %s", exp.Name)
 	ui.KeyValue("Path", exp.Path)
 	ui.KeyValue("Branch", exp.Branch)
 	fmt.Println()
+
+	// Run on_remove hooks
+	if hooks.HasHooks(hooks.OnRemove, exp.Repo) {
+		ui.Info("Running on_remove hooks...")
+		hookEnv := &hooks.Env{
+			Type:     "experiment",
+			Name:     exp.Name,
+			Path:     exp.Path,
+			RepoName: filepath.Base(exp.Repo),
+			RepoPath: exp.Repo,
+			Branch:   exp.Branch,
+			Ticket:   exp.Ticket,
+		}
+		results := hooks.RunHooks(hooks.OnRemove, hookEnv)
+		for _, r := range results {
+			if r.Error != nil {
+				ui.Warn("Hook failed: %s - %v", r.Command, r.Error)
+			}
+		}
+	}
 
 	// Check for uncommitted changes
 	if hasChanges, _ := git.HasUncommittedChanges(exp.Path); hasChanges {
@@ -298,7 +460,7 @@ func cleanupScratch(cfg *config.Config, state *config.State, name string, scratc
 	return nil
 }
 
-// completeCleanupNames provides shell completion for experiment/project/scratch names
+// completeCleanupNames provides shell completion for worktree/project/scratch names
 func completeCleanupNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if len(args) != 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
@@ -315,8 +477,15 @@ func completeCleanupNames(cmd *cobra.Command, args []string, toComplete string) 
 	}
 
 	var names []string
+	// v2 worktrees
+	for repoName, worktrees := range state.Worktrees {
+		for _, wt := range worktrees {
+			names = append(names, wt.Name+"\t"+wt.Label+" ("+repoName+")")
+		}
+	}
+	// v1 experiments (legacy)
 	for _, exp := range state.Experiments {
-		names = append(names, exp.Name+"\texperiment")
+		names = append(names, exp.Name+"\tlegacy")
 	}
 	for _, proj := range state.Projects {
 		names = append(names, proj.Name+"\tproject")

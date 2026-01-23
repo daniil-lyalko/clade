@@ -116,7 +116,8 @@ func GetCurrentBranch(repoPath string) (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
-// GetRepoRoot returns the root directory of the git repository
+// GetRepoRoot returns the root directory of the git repository (worktree-aware)
+// If in a worktree, returns the worktree's root, not the main repo
 func GetRepoRoot(path string) (string, error) {
 	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
 	cmd.Dir = path
@@ -125,6 +126,57 @@ func GetRepoRoot(path string) (string, error) {
 		return "", fmt.Errorf("not a git repository: %w", err)
 	}
 	return strings.TrimSpace(string(output)), nil
+}
+
+// GetMainRepoRoot returns the root directory of the main repository
+// If in a worktree, resolves to the original/main repo, not the worktree
+func GetMainRepoRoot(path string) (string, error) {
+	// Get the common git directory (shared across all worktrees)
+	cmd := exec.Command("git", "rev-parse", "--git-common-dir")
+	cmd.Dir = path
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("not a git repository: %w", err)
+	}
+
+	gitCommonDir := strings.TrimSpace(string(output))
+
+	// If it's just ".git", we're in the main repo
+	if gitCommonDir == ".git" {
+		return GetRepoRoot(path)
+	}
+
+	// Otherwise, gitCommonDir is an absolute path like /path/to/main-repo/.git
+	// The main repo root is the parent of .git
+	if strings.HasSuffix(gitCommonDir, "/.git") || strings.HasSuffix(gitCommonDir, "\\.git") {
+		return filepath.Dir(gitCommonDir), nil
+	}
+
+	// Fallback: resolve to absolute and get parent
+	absGitDir, err := filepath.Abs(filepath.Join(path, gitCommonDir))
+	if err != nil {
+		return GetRepoRoot(path)
+	}
+
+	// gitCommonDir might be like "../../../main-repo/.git"
+	if strings.HasSuffix(absGitDir, "/.git") || strings.HasSuffix(absGitDir, "\\.git") {
+		return filepath.Dir(absGitDir), nil
+	}
+
+	// Last fallback
+	return GetRepoRoot(path)
+}
+
+// IsWorktree checks if the current path is inside a git worktree (not the main repo)
+func IsWorktree(path string) bool {
+	cmd := exec.Command("git", "rev-parse", "--git-common-dir")
+	cmd.Dir = path
+	output, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	gitCommonDir := strings.TrimSpace(string(output))
+	return gitCommonDir != ".git"
 }
 
 // IsGitRepo checks if a path is inside a git repository

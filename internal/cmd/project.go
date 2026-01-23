@@ -19,26 +19,29 @@ import (
 
 var (
 	projectEditorFlag    string
+	projectAgentFlag     string
 	projectNoAgentFlag   bool
 	projectNoEditorFlag  bool
 	projectAddEditorFlag string
+	projectAddAgentFlag    string
 	projectAddNoAgentFlag  bool
 	projectAddNoEditorFlag bool
 )
 
 var projectCmd = &cobra.Command{
-	Use:   "project [name]",
-	Short: "Create multi-repo workspace with unified branch",
-	Long: `Create a project workspace containing worktrees from multiple repositories.
+	Use:    "project [name]",
+	Short:  "Create multi-repo workspace with unified branch (experimental)",
+	Hidden: true, // Hidden from help by default - use --experimental to show
+	Long: `[EXPERIMENTAL] Create a project workspace containing worktrees from multiple repositories.
+
+This feature is experimental and requires --experimental flag or may be removed in future versions.
 
 All repos in the project share the same branch name, making it easy to
 coordinate changes across repositories for a single feature.
 
 Examples:
-  clade project                     # Interactive setup
-  clade project api-integration     # Named project with interactive repo selection
-  clade project foo -o cursor       # Open Cursor IDE
-  clade project foo --no-agent      # Skip launching Claude
+  clade --experimental project                     # Interactive setup
+  clade --experimental project api-integration     # Named project with interactive repo selection
 
 Creates:
   ~/clade/projects/{name}/
@@ -46,6 +49,12 @@ Creates:
     ├── frontend/     # Worktree from repo 2
     └── shared/       # Worktree from repo 3`,
 	Args: cobra.MaximumNArgs(1),
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		if !IsExperimentalEnabled() {
+			return fmt.Errorf("'project' is an experimental feature\n\nTo use it, run: clade --experimental project [name]\n\nFor most use cases, consider creating separate worktrees with the same branch name instead")
+		}
+		return nil
+	},
 	RunE: runProject,
 }
 
@@ -68,11 +77,11 @@ func init() {
 	rootCmd.AddCommand(projectCmd)
 	projectCmd.AddCommand(projectAddCmd)
 	projectCmd.Flags().StringVarP(&projectEditorFlag, "open", "o", "", "Open editor/IDE (cursor, code, nvim)")
-	projectCmd.Flags().StringVarP(&projectEditorFlag, "editor", "e", "", "Alias for --open")
+	projectCmd.Flags().StringVarP(&projectAgentFlag, "agent", "a", "", "Override configured agent")
 	projectCmd.Flags().BoolVar(&projectNoAgentFlag, "no-agent", false, "Skip launching the AI agent")
 	projectCmd.Flags().BoolVar(&projectNoEditorFlag, "no-editor", false, "Skip opening the editor")
 	projectAddCmd.Flags().StringVarP(&projectAddEditorFlag, "open", "o", "", "Open editor/IDE (cursor, code, nvim)")
-	projectAddCmd.Flags().StringVarP(&projectAddEditorFlag, "editor", "e", "", "Alias for --open")
+	projectAddCmd.Flags().StringVarP(&projectAddAgentFlag, "agent", "a", "", "Override configured agent")
 	projectAddCmd.Flags().BoolVar(&projectAddNoAgentFlag, "no-agent", false, "Skip launching the AI agent")
 	projectAddCmd.Flags().BoolVar(&projectAddNoEditorFlag, "no-editor", false, "Skip opening the editor")
 }
@@ -349,7 +358,7 @@ func runProject(cmd *cobra.Command, args []string) error {
 	ui.Success("Project created!")
 
 	// Launch editor and/or agent
-	return launchProjectSession(cfg, project, projectEditorFlag, projectNoAgentFlag, projectNoEditorFlag)
+	return launchProjectSessionWithAgent(cfg, project, projectEditorFlag, projectAgentFlag, projectNoAgentFlag, projectNoEditorFlag)
 }
 
 func getRepoNames(cfg *config.Config) []string {
@@ -382,6 +391,11 @@ func resolveRepoPath(cfg *config.Config, input string) (string, error) {
 
 // launchProjectSession opens editor and/or launches agent for a project
 func launchProjectSession(cfg *config.Config, project *config.Project, editorOverride string, noAgent bool, noEditor bool) error {
+	return launchProjectSessionWithAgent(cfg, project, editorOverride, "", noAgent, noEditor)
+}
+
+// launchProjectSessionWithAgent opens editor and/or launches agent for a project with agent override
+func launchProjectSessionWithAgent(cfg *config.Config, project *config.Project, editorOverride string, agentOverride string, noAgent bool, noEditor bool) error {
 	if len(project.Repos) == 0 {
 		return fmt.Errorf("project has no repos")
 	}
@@ -407,9 +421,15 @@ func launchProjectSession(cfg *config.Config, project *config.Project, editorOve
 		}
 	}
 
+	// Determine agent to use
+	agentCmd := cfg.Agent
+	if agentOverride != "" {
+		agentCmd = agentOverride
+	}
+
 	// Launch agent (if configured and not disabled)
-	if !noAgent && cfg.Agent != "" {
-		ui.Info("Launching %s...", cfg.Agent)
+	if !noAgent && agentCmd != "" {
+		ui.Info("Launching %s...", agentCmd)
 		fmt.Println()
 
 		// Build add-dir list for other repos
@@ -418,7 +438,7 @@ func launchProjectSession(cfg *config.Config, project *config.Project, editorOve
 			addDirs = append(addDirs, filepath.Join(project.Path, project.Repos[i].Name))
 		}
 
-		ag := agent.NewAgent(cfg.Agent)
+		ag := agent.NewAgent(agentCmd)
 		opts := agent.LaunchOptions{
 			AddDirs: addDirs,
 			Flags:   cfg.AgentFlags,
@@ -689,7 +709,7 @@ func runProjectAdd(cmd *cobra.Command, args []string) error {
 		Default:   "y",
 	}
 	if _, err := prompt.Run(); err == nil {
-		return launchProjectSession(cfg, project, projectAddEditorFlag, projectAddNoAgentFlag, projectAddNoEditorFlag)
+		return launchProjectSessionWithAgent(cfg, project, projectAddEditorFlag, projectAddAgentFlag, projectAddNoAgentFlag, projectAddNoEditorFlag)
 	}
 
 	return nil

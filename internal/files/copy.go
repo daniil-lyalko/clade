@@ -1,115 +1,75 @@
 package files
 
 import (
-	"bufio"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
 
-// CommonIgnoredFiles are files commonly gitignored but needed for running
-var CommonIgnoredFiles = []string{
-	".env",
-	".env.local",
-	".envrc",
-	".npmrc",
-	".yarnrc",
-	"config/local.json",
-	"config/local.yaml",
-	"config/local.yml",
-	".vscode/settings.json",
+// ExcludeFiles - OS junk files, never prompt for these
+var ExcludeFiles = []string{
+	".DS_Store",
+	"Thumbs.db",
+	"desktop.ini",
+	".Spotlight-V100",
+	".Trashes",
+	"ehthumbs.db",
 }
 
-// FindGitignored finds files that exist in repoPath but are gitignored
+// FindGitignored finds all gitignored FILES (not directories) that exist in the repo.
+// Uses git's native gitignore parsing which handles:
+// - .gitignore at any level
+// - Global gitignore (~/.config/git/ignore)
+// - .git/info/exclude
 func FindGitignored(repoPath string) []string {
+	// Use git to find all ignored files that exist
+	// --others: untracked files only
+	// --ignored: show ignored files
+	// --exclude-standard: use standard ignore rules (.gitignore, global, etc.)
+	cmd := exec.Command("git", "ls-files", "--others", "--ignored", "--exclude-standard")
+	cmd.Dir = repoPath
+	output, err := cmd.Output()
+	if err != nil {
+		// Fallback to empty if git command fails
+		return nil
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 	var found []string
 
-	// Check common patterns
-	for _, pattern := range CommonIgnoredFiles {
-		fullPath := filepath.Join(repoPath, pattern)
-		if _, err := os.Stat(fullPath); err == nil {
-			if isGitignored(repoPath, pattern) {
-				found = append(found, pattern)
-			}
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
 		}
-	}
 
-	// Also check for any .env* files
-	entries, err := os.ReadDir(repoPath)
-	if err == nil {
-		for _, entry := range entries {
-			name := entry.Name()
-			if strings.HasPrefix(name, ".env") && !entry.IsDir() {
-				if isGitignored(repoPath, name) {
-					if !contains(found, name) {
-						found = append(found, name)
-					}
-				}
-			}
+		// Skip OS junk files
+		if isExcluded(filepath.Base(line)) {
+			continue
 		}
-	}
 
-	// Check config/* directory for local configs
-	configDir := filepath.Join(repoPath, "config")
-	if entries, err := os.ReadDir(configDir); err == nil {
-		for _, entry := range entries {
-			if entry.IsDir() {
-				continue
-			}
-			name := entry.Name()
-			relPath := filepath.Join("config", name)
-			// Look for local/secret/dev configs
-			if strings.Contains(strings.ToLower(name), "local") ||
-				strings.Contains(strings.ToLower(name), "secret") ||
-				strings.Contains(strings.ToLower(name), "dev") {
-				if isGitignored(repoPath, relPath) {
-					if !contains(found, relPath) {
-						found = append(found, relPath)
-					}
-				}
-			}
+		// Verify it's a file (not a directory) and exists
+		fullPath := filepath.Join(repoPath, line)
+		info, err := os.Stat(fullPath)
+		if err != nil || info.IsDir() {
+			continue
 		}
+
+		found = append(found, line)
 	}
 
 	return found
 }
 
-// isGitignored checks if a file is in .gitignore
-func isGitignored(repoPath, relPath string) bool {
-	gitignorePath := filepath.Join(repoPath, ".gitignore")
-	file, err := os.Open(gitignorePath)
-	if err != nil {
-		return false
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		// Simple pattern matching (exact match or prefix with *)
-		if line == relPath {
+// isExcluded checks if a filename is in the OS junk exclusion list
+func isExcluded(filename string) bool {
+	for _, excluded := range ExcludeFiles {
+		if filename == excluded {
 			return true
-		}
-		if strings.HasPrefix(line, "*.") && strings.HasSuffix(relPath, line[1:]) {
-			return true
-		}
-		if strings.HasSuffix(line, "/") && strings.HasPrefix(relPath, line) {
-			return true
-		}
-		// Handle patterns like .env*
-		if strings.HasSuffix(line, "*") {
-			prefix := strings.TrimSuffix(line, "*")
-			if strings.HasPrefix(relPath, prefix) {
-				return true
-			}
 		}
 	}
-
 	return false
 }
 
@@ -154,13 +114,4 @@ func copyFile(src, dst string) error {
 	}
 
 	return os.Chmod(dst, srcInfo.Mode())
-}
-
-func contains(slice []string, s string) bool {
-	for _, item := range slice {
-		if item == s {
-			return true
-		}
-	}
-	return false
 }

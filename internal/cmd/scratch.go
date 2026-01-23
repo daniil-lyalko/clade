@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,13 +9,16 @@ import (
 	"time"
 
 	"github.com/daniil-lyalko/clade/internal/config"
+	"github.com/daniil-lyalko/clade/internal/hooks"
 	"github.com/daniil-lyalko/clade/internal/ui"
+	"github.com/daniil-lyalko/clade/internal/util"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
 
 var (
 	scratchEditorFlag   string
+	scratchAgentFlag    string
 	scratchNoAgentFlag  bool
 	scratchNoEditorFlag bool
 )
@@ -44,7 +46,7 @@ Examples:
 func init() {
 	rootCmd.AddCommand(scratchCmd)
 	scratchCmd.Flags().StringVarP(&scratchEditorFlag, "open", "o", "", "Open editor/IDE (cursor, code, nvim)")
-	scratchCmd.Flags().StringVarP(&scratchEditorFlag, "editor", "e", "", "Alias for --open")
+	scratchCmd.Flags().StringVarP(&scratchAgentFlag, "agent", "a", "", "Override configured agent")
 	scratchCmd.Flags().BoolVar(&scratchNoAgentFlag, "no-agent", false, "Skip launching the AI agent")
 	scratchCmd.Flags().BoolVar(&scratchNoEditorFlag, "no-editor", false, "Skip opening the editor")
 }
@@ -107,9 +109,9 @@ func runScratch(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create scratch directory: %w", err)
 	}
 
-	// Initialize .claude/ configuration
+	// Initialize .claude/ configuration (scratch-specific, no git assumptions)
 	ui.Info("Initializing .claude/ configuration...")
-	if err := InitRepo(scratchPath); err != nil {
+	if err := initScratchConfig(scratchPath); err != nil {
 		ui.Warn("Failed to initialize .claude/: %v", err)
 	}
 
@@ -121,7 +123,7 @@ func runScratch(cmd *cobra.Command, args []string) error {
 		"ticket":  ticket,
 		"created": time.Now().Format(time.RFC3339),
 	}
-	if err := writeScratchJSON(filepath.Join(scratchPath, ".clade.json"), cladeMetadata); err != nil {
+	if err := util.WriteJSON(filepath.Join(scratchPath, ".clade.json"), cladeMetadata); err != nil {
 		ui.Warn("Failed to write .clade.json: %v", err)
 	}
 
@@ -140,8 +142,30 @@ func runScratch(cmd *cobra.Command, args []string) error {
 
 	ui.Success("Scratch folder created!")
 
+	// Run on_create hooks (global only for scratches)
+	if hooks.HasHooks(hooks.OnCreate, "") {
+		ui.Info("Running on_create hooks...")
+		hookEnv := &hooks.Env{
+			Type:   "scratch",
+			Name:   scratchName,
+			Path:   scratchPath,
+			Ticket: ticket,
+		}
+		results := hooks.RunHooks(hooks.OnCreate, hookEnv)
+		for _, r := range results {
+			if r.Error != nil {
+				ui.Warn("Hook failed: %s - %v", r.Command, r.Error)
+			}
+		}
+	}
+
 	// Launch editor and/or agent
-	return launchSession(cfg, scratchPath, scratchEditorFlag, scratchNoAgentFlag, scratchNoEditorFlag)
+	return launchWorktreeSession(cfg, "", scratchPath, WorktreeOptions{
+		EditorFlag:   scratchEditorFlag,
+		AgentFlag:    scratchAgentFlag,
+		NoAgentFlag:  scratchNoAgentFlag,
+		NoEditorFlag: scratchNoEditorFlag,
+	})
 }
 
 func isValidScratchName(name string) bool {
@@ -163,14 +187,32 @@ func extractTicketFromName(name string) string {
 	return ""
 }
 
-func writeScratchJSON(path string, data interface{}) error {
-	file, err := os.Create(path)
-	if err != nil {
+// initScratchConfig initializes .claude/ for scratch folders (no git assumptions)
+func initScratchConfig(scratchPath string) error {
+	claudeDir := filepath.Join(scratchPath, ".claude")
+	commandsDir := filepath.Join(claudeDir, "commands")
+
+	// Ensure directories exist
+	if err := os.MkdirAll(commandsDir, 0755); err != nil {
 		return err
 	}
-	defer file.Close()
 
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	return encoder.Encode(data)
+	// Write settings.json (same as regular init)
+	settingsPath := filepath.Join(claudeDir, "settings.json")
+	if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
+		if err := writeSettingsJSON(settingsPath); err != nil {
+			return err
+		}
+	}
+
+	// Write drop.md command
+	dropPath := filepath.Join(commandsDir, "drop.md")
+	if _, err := os.Stat(dropPath); os.IsNotExist(err) {
+		if err := writeDropCommand(dropPath); err != nil {
+			return err
+		}
+	}
+
+	// Note: No .gitignore update for scratches (they're not git repos)
+	return nil
 }
