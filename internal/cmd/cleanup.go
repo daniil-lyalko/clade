@@ -19,13 +19,14 @@ var cleanupForceFlag bool
 
 var cleanupCmd = &cobra.Command{
 	Use:   "cleanup [name]",
-	Short: "Remove experiment or project worktrees",
-	Long: `Remove an experiment or project and optionally delete the branch.
+	Short: "Remove worktrees, projects, or scratch folders",
+	Long: `Remove a worktree, project, or scratch folder and optionally delete the branch.
 
 Examples:
-  clade cleanup try-redis           # Clean up experiment
+  clade cleanup LEAP-1234           # Clean up worktree
   clade cleanup my-project          # Clean up project
-  clade cleanup try-redis --force   # Skip confirmations`,
+  clade cleanup my-scratch          # Clean up scratch folder
+  clade cleanup LEAP-1234 --force   # Skip confirmations`,
 	Args:              cobra.MaximumNArgs(1),
 	RunE:              runCleanup,
 	ValidArgsFunction: completeCleanupNames,

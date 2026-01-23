@@ -12,7 +12,7 @@ import (
 
 var openCmd = &cobra.Command{
 	Use:   "open [name]",
-	Short: "Print path to experiment/project/scratch (use with cd)",
+	Short: "Print path to worktree/project/scratch (use with cd)",
 	Long: `Print the path to a worktree for use with cd.
 
 Examples:

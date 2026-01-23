@@ -26,14 +26,13 @@ var (
 
 var resumeCmd = &cobra.Command{
 	Use:   "resume [name]",
-	Short: "Resume an experiment or project",
-	Long: `Navigate to an experiment or project worktree and launch your agent.
+	Short: "Resume a worktree, project, or scratch folder",
+	Long: `Navigate to a worktree and launch your agent.
 
-If the experiment exists in clade's state, it resumes directly.
-If not tracked but the branch exists (locally or remotely), it adopts it.
+If the worktree exists in clade's state, it resumes directly.
+If not tracked but the branch exists (locally or remotely), it can adopt it.
 
-Searches for branches named "exp/<name>" or "feat/<name>". Use --branch to
-adopt any existing branch regardless of naming convention.
+Use --branch to adopt any existing branch by its full name.
 
 The SessionStart hook will automatically inject context including:
   - DROPBAG.md from your last session
@@ -43,12 +42,12 @@ The SessionStart hook will automatically inject context including:
 
 Examples:
   clade resume                       # Interactive picker
-  clade resume try-redis             # Specific experiment
-  clade resume try-redis -r backend  # Adopt branch from specific repo
-  clade resume price-formula -r backend --branch feat/price-formula-system
-  clade resume try-redis -o cursor   # Resume + open Cursor IDE
-  clade resume try-redis -o code     # Resume + open VS Code
-  clade resume foo --no-agent        # Skip launching Claude`,
+  clade resume LEAP-1234             # Resume by worktree name
+  clade resume my-feature -r backend # Adopt branch from specific repo
+  clade resume foo --branch feature/LEAP-1234-foo  # Adopt specific branch
+  clade resume foo -o cursor         # Resume + open Cursor IDE
+  clade resume foo -o code           # Resume + open VS Code
+  clade resume foo --no-agent        # Skip launching agent`,
 	Args:              cobra.MaximumNArgs(1),
 	RunE:              runResume,
 	ValidArgsFunction: completeResumableNames,
@@ -130,11 +129,10 @@ func resumeInteractive(cfg *config.Config, state *config.State) error {
 	totalItems := len(state.Worktrees) + len(state.Experiments) + len(state.Projects) + len(state.Scratches)
 	if totalItems == 0 {
 		ui.Info("No worktrees, projects, or scratch folders to resume")
-		ui.Detail("Create one with: clade feature <name>")
-		ui.Detail("Or for bugs: clade bug <name>")
-		ui.Detail("Or for spikes: clade spike <name>")
+		ui.Detail("Create one with: clade <name>")
+		ui.Detail("With a type: clade <name> -t feature|bug|spike|chore")
 		ui.Detail("Or for no-git: clade scratch <name>")
-		ui.Detail("Or adopt an existing branch: clade resume <branch-name> -r <repo>")
+		ui.Detail("Or adopt an existing branch: clade resume <name> -r <repo> --branch <branch>")
 		return nil
 	}
 
@@ -375,88 +373,51 @@ func adoptOrphanedBranch(cfg *config.Config, state *config.State, name string) e
 	repoName := git.GetRepoName(repoPath)
 	git.Fetch(repoPath)
 
-	// Use explicit branch if provided, otherwise search exp/ and feat/ prefixes
-	var branch string
-	var branchInfo git.BranchInfo
-
-	if resumeBranchFlag != "" {
-		branch = resumeBranchFlag
-		ui.Info("Checking for branch '%s' in %s...", branch, repoName)
-		branchInfo = git.CheckBranch(repoPath, branch)
-	} else {
-		// Search for exp/ first, then feat/
-		expBranch := "exp/" + name
-		featBranch := "feat/" + name
-
-		ui.Info("Searching for branches in %s...", repoName)
-
-		expInfo := git.CheckBranch(repoPath, expBranch)
-		featInfo := git.CheckBranch(repoPath, featBranch)
-
-		expFound := expInfo.Status != git.BranchNotFound
-		featFound := featInfo.Status != git.BranchNotFound
-
-		if expFound && featFound {
-			// Both exist - prompt user to choose
-			ui.Info("Found both exp/%s and feat/%s", name, name)
-			prompt := promptui.Select{
-				Label: "Which branch",
-				Items: []string{expBranch, featBranch},
-			}
-			_, branch, err = prompt.Run()
-			if err != nil {
-				return err
-			}
-			if branch == expBranch {
-				branchInfo = expInfo
-			} else {
-				branchInfo = featInfo
-			}
-		} else if expFound {
-			branch = expBranch
-			branchInfo = expInfo
-		} else if featFound {
-			branch = featBranch
-			branchInfo = featInfo
-		} else {
-			ui.Error("Branch not found: tried '%s' and '%s'", expBranch, featBranch)
-			ui.Detail("Create new experiment: clade exp %s", name)
-			ui.Detail("Or specify branch: clade resume %s --branch <branch>", name)
-			return fmt.Errorf("branch not found")
-		}
+	// Require explicit branch name - no more auto-searching for prefixes
+	if resumeBranchFlag == "" {
+		ui.Error("'%s' not found in clade state", name)
+		ui.Detail("To adopt an existing branch, specify its full name:")
+		ui.Detail("  clade resume %s -r %s --branch <branch-name>", name, repoName)
+		ui.Detail("")
+		ui.Detail("Or create a new worktree:")
+		ui.Detail("  clade %s -r %s", name, repoName)
+		return fmt.Errorf("worktree not found")
 	}
+
+	branch := resumeBranchFlag
+	ui.Info("Checking for branch '%s' in %s...", branch, repoName)
+	branchInfo := git.CheckBranch(repoPath, branch)
 
 	if branchInfo.Status == git.BranchNotFound {
 		ui.Error("Branch '%s' not found locally or on remote", branch)
-		ui.Detail("Create new experiment: clade exp %s", name)
+		ui.Detail("Create new worktree: clade %s -r %s", name, repoName)
 		return fmt.Errorf("branch not found")
 	}
 
-	// Branch exists - adopt it
-	expKey := config.ExperimentKey(repoPath, name)
-	expPath := filepath.Join(cfg.ExperimentsDir(), expKey)
+	// Use v2 worktree path structure: ~/clade/repos/{repo}/{name}/
+	wtPath := config.WorktreePath(cfg, repoName, name)
 
-	// Ensure experiments directory exists
-	if err := os.MkdirAll(cfg.ExperimentsDir(), 0755); err != nil {
+	// Ensure repos directory exists
+	if err := os.MkdirAll(filepath.Dir(wtPath), 0755); err != nil {
 		return err
 	}
 
 	switch branchInfo.Status {
 	case git.BranchLocalOnly:
 		ui.Info("Adopting local branch '%s'", branch)
-		if err := git.CreateWorktreeFromBranch(repoPath, expPath, branch); err != nil {
+		if err := git.CreateWorktreeFromBranch(repoPath, wtPath, branch); err != nil {
 			return err
 		}
 
 	case git.BranchRemoteOnly:
 		ui.Info("Tracking remote branch 'origin/%s'", branch)
-		if err := git.CreateWorktreeTrackRemote(repoPath, expPath, branch); err != nil {
+		if err := git.CreateWorktreeTrackRemote(repoPath, wtPath, branch); err != nil {
 			return err
 		}
 
 	case git.BranchBoth:
 		ui.Info("Adopting branch '%s'", branch)
-		if err := git.CreateWorktreeFromBranch(repoPath, expPath, branch); err != nil {
+		if err := git.CreateWorktreeFromBranch(repoPath, wtPath, branch); err != nil {
 			return err
 		}
 		if branchInfo.Diverged {
@@ -467,28 +428,34 @@ func adoptOrphanedBranch(cfg *config.Config, state *config.State, name string) e
 
 	// Auto-init if needed
 	if cfg.AutoInit {
-		InitRepo(expPath)
+		InitRepo(wtPath)
 	}
 
-	// Add to state
+	// Add to v2 state as worktree
 	ticket := extractTicket(name)
-	exp := &config.Experiment{
+	label := inferLabelFromBranch(branch)
+	wt := &config.Worktree{
 		Name:     name,
-		Repo:     repoPath,
-		Path:     expPath,
+		Label:    label,
 		Branch:   branch,
 		Ticket:   ticket,
 		Created:  time.Now(),
 		LastUsed: time.Now(),
 	}
-	state.AddExperiment(exp)
+	state.AddWorktree(repoName, wt)
 	state.Save(cfg)
 
-	ui.Success("Adopted experiment '%s'", name)
-	ui.KeyValue("Path", expPath)
+	ui.Success("Adopted worktree '%s'", name)
+	ui.KeyValue("Path", wtPath)
 
-	return launchSession(cfg, expPath, resumeEditorFlag, resumeNoAgentFlag, resumeNoEditorFlag)
+	return launchWorktreeSession(cfg, repoPath, wtPath, WorktreeOptions{
+		EditorFlag:   resumeEditorFlag,
+		AgentFlag:    resumeAgentFlag,
+		NoAgentFlag:  resumeNoAgentFlag,
+		NoEditorFlag: resumeNoEditorFlag,
+	})
 }
+
 
 func resumeTrackedScratch(cfg *config.Config, state *config.State, scratch *config.Scratch) error {
 	// Verify path exists
@@ -548,8 +515,17 @@ func completeResumableNames(cmd *cobra.Command, args []string, toComplete string
 	}
 
 	var names []string
+
+	// Add v2 worktrees
+	for repoName, worktrees := range state.Worktrees {
+		for _, wt := range worktrees {
+			names = append(names, wt.Name+"\t"+wt.Label+" ("+repoName+")")
+		}
+	}
+
+	// Add v1 experiments (legacy)
 	for _, exp := range state.Experiments {
-		names = append(names, exp.Name+"\texperiment")
+		names = append(names, exp.Name+"\tlegacy")
 	}
 	for _, proj := range state.Projects {
 		names = append(names, proj.Name+"\tproject")
