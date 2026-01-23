@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/daniil-lyalko/clade/internal/agent"
 	"github.com/daniil-lyalko/clade/internal/config"
@@ -28,23 +27,16 @@ var (
 )
 
 var expCmd = &cobra.Command{
-	Use:   "exp [name]",
-	Short: "Create isolated experiment worktree",
-	Long: `Create an isolated experiment worktree for throwaway spikes.
+	Use:        "exp [name]",
+	Short:      "Create experiment worktree (DEPRECATED: use 'work -t spike')",
+	Deprecated: "use 'clade work -t spike' instead. 'exp' will be removed in v0.5.",
+	Long: `DEPRECATED: Use 'clade work -t spike' instead.
+
+Create an isolated experiment worktree for throwaway spikes.
 
 Examples:
-  clade exp try-redis              # Quick experiment
-  clade exp PROJ-1234              # Ticket investigation
-  clade exp fix-auth -r backend    # Specify repo by name
-  clade exp fix-auth -p            # Force repo picker
-  clade exp foo -b custom/branch   # Custom branch name
-  clade exp foo -o cursor          # Open Cursor IDE
-  clade exp foo --no-agent         # Skip launching Claude
-
-The experiment creates:
-  - A new worktree at ~/clade/experiments/{repo}-{name}/
-  - A branch (default: exp/{name}, or custom with -b)
-  - Copies .claude/ config from the source repo`,
+  clade work try-redis -t spike    # Use 'work -t spike' instead
+  clade exp try-redis              # Still works but deprecated`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runExp,
 }
@@ -55,172 +47,43 @@ func init() {
 	expCmd.Flags().BoolVarP(&expPickFlag, "pick", "p", false, "Force repo picker even if in a git repo")
 	expCmd.Flags().StringVarP(&expBranchFlag, "branch", "b", "", "Custom branch name (skips prompt)")
 	expCmd.Flags().StringVarP(&expEditorFlag, "open", "o", "", "Open editor/IDE (cursor, code, nvim)")
-	expCmd.Flags().StringVarP(&expEditorFlag, "editor", "e", "", "Alias for --open")
 	expCmd.Flags().BoolVar(&expNoAgentFlag, "no-agent", false, "Skip launching the AI agent")
 	expCmd.Flags().BoolVar(&expNoEditorFlag, "no-editor", false, "Skip opening the editor")
 }
 
 func runExp(cmd *cobra.Command, args []string) error {
-	cfg, err := config.Load()
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
+	// Show deprecation warning
+	ui.Warn("'clade exp' is deprecated. Use 'clade work -t spike' instead.")
+	fmt.Println()
 
-	// Get experiment name
-	var expName string
+	var name string
+	var err error
+
 	if len(args) > 0 {
-		expName = args[0]
+		name = args[0]
 	} else {
 		prompt := promptui.Prompt{
-			Label: "Experiment name",
+			Label: "Spike name",
 		}
-		expName, err = prompt.Run()
+		name, err = prompt.Run()
 		if err != nil {
 			return err
 		}
 	}
 
-	// Validate experiment name
-	if !isValidExpName(expName) {
-		return fmt.Errorf("invalid experiment name: use alphanumeric, hyphens, underscores only")
-	}
-
-	// Resolve repository (with pick flag support)
-	repoPath, err := resolveRepoWithPick(cfg, expRepoFlag, expPickFlag)
-	if err != nil {
-		return err
-	}
-
-	// Update last used repo
-	cfg.LastRepo = repoPath
-	if err := cfg.Save(); err != nil {
-		ui.Warn("Failed to save config: %v", err)
-	}
-
-	repoName := git.GetRepoName(repoPath)
-	expKey := config.ExperimentKey(repoPath, expName)
-	expPath := filepath.Join(cfg.ExperimentsDir(), expKey)
-
-	// Get branch name (prompt if not provided via flag)
-	var branch string
-	if expBranchFlag != "" {
-		branch = expBranchFlag
-	} else {
-		defaultBranch := "exp/" + expName
-		prompt := promptui.Prompt{
-			Label:   "Branch name",
-			Default: defaultBranch,
-		}
-		branch, err = prompt.Run()
-		if err != nil {
-			return err
-		}
-		if branch == "" {
-			branch = defaultBranch
-		}
-	}
-
-	// Check if experiment already exists
-	state, err := config.LoadState(cfg)
-	if err != nil {
-		return fmt.Errorf("failed to load state: %w", err)
-	}
-
-	if existing := state.GetExperiment(expKey); existing != nil {
-		ui.Warn("Experiment '%s' already exists", expName)
-		ui.KeyValue("Path", existing.Path)
-
-		prompt := promptui.Prompt{
-			Label:     "Resume existing experiment",
-			IsConfirm: true,
-		}
-		_, err := prompt.Run()
-		if err == nil {
-			// User wants to resume
-			return launchSession(cfg, existing.Path, expEditorFlag, expNoAgentFlag, expNoEditorFlag)
-		}
-		return nil
-	}
-
-	// Create experiment directory
-	ui.Header("Creating experiment: %s", expName)
-	ui.KeyValue("Repo", repoName)
-	ui.KeyValue("Path", expPath)
-	ui.KeyValue("Branch", branch)
-
-	// Ensure experiments directory exists
-	if err := os.MkdirAll(cfg.ExperimentsDir(), 0755); err != nil {
-		return fmt.Errorf("failed to create experiments directory: %w", err)
-	}
-
-	// Check if branch already exists (local or remote)
-	ui.Info("Checking branch availability...")
-	branchInfo := git.CheckBranch(repoPath, branch)
-	if branchInfo.Status != git.BranchNotFound {
-		ui.Error("Branch '%s' already exists", branch)
-		ui.Detail("Use: clade resume %s", expName)
-		ui.Detail("Or pick a different name")
-		return fmt.Errorf("branch already exists")
-	}
-
-	// Create worktree with new branch from origin's default
-	ui.Info("Creating worktree...")
-	if err := git.CreateWorktreeNew(repoPath, expPath, branch); err != nil {
-		return fmt.Errorf("failed to create worktree: %w", err)
-	}
-
-	// Copy .claude/ directory if it exists in source repo
-	sourceClaudeDir := filepath.Join(repoPath, ".claude")
-	if _, err := os.Stat(sourceClaudeDir); err == nil {
-		ui.Info("Copying .claude/ configuration...")
-		if err := copyDir(sourceClaudeDir, filepath.Join(expPath, ".claude")); err != nil {
-			ui.Warn("Failed to copy .claude/ directory: %v", err)
-		}
-	} else if cfg.AutoInit {
-		// No .claude/ in source, auto-initialize
-		ui.Info("Initializing .claude/ configuration...")
-		if err := InitRepo(expPath); err != nil {
-			ui.Warn("Failed to initialize .claude/: %v", err)
-		}
-	}
-
-	// Copy gitignored files (.env, .npmrc, etc.)
-	if err := copyGitignoredFiles(cfg, repoPath, expPath); err != nil {
-		ui.Warn("Failed to copy some files: %v", err)
-	}
-
-	// Create .clade.json metadata
-	ticket := extractTicket(expName)
-	cladeMetadata := map[string]interface{}{
-		"type":    "experiment",
-		"name":    expName,
-		"ticket":  ticket,
-		"repo":    repoName,
-		"created": time.Now().Format(time.RFC3339),
-	}
-	if err := writeJSON(filepath.Join(expPath, ".clade.json"), cladeMetadata); err != nil {
-		ui.Warn("Failed to write .clade.json: %v", err)
-	}
-
-	// Update state
-	exp := &config.Experiment{
-		Name:     expName,
-		Repo:     repoPath,
-		Path:     expPath,
-		Branch:   branch,
-		Ticket:   ticket,
-		Created:  time.Now(),
-		LastUsed: time.Now(),
-	}
-	state.AddExperiment(exp)
-	if err := state.Save(cfg); err != nil {
-		ui.Warn("Failed to save state: %v", err)
-	}
-
-	ui.Success("Experiment created!")
-
-	// Launch editor and/or agent
-	return launchSession(cfg, expPath, expEditorFlag, expNoAgentFlag, expNoEditorFlag)
+	// Delegate to the new spike command logic
+	// Use exp/ branch prefix for backward compatibility
+	return CreateWorktree(name, WorktreeConfig{
+		Label:        "spike",
+		BranchPrefix: "exp", // Keep exp/ for backward compatibility
+	}, WorktreeOptions{
+		RepoFlag:     expRepoFlag,
+		PickFlag:     expPickFlag,
+		BranchFlag:   expBranchFlag,
+		EditorFlag:   expEditorFlag,
+		NoAgentFlag:  expNoAgentFlag,
+		NoEditorFlag: expNoEditorFlag,
+	})
 }
 
 func resolveRepo(cfg *config.Config, repoFlag string) (string, error) {
@@ -244,6 +107,40 @@ func resolveRepo(cfg *config.Config, repoFlag string) (string, error) {
 		return "", err
 	}
 	if git.IsGitRepo(cwd) {
+		// Check if we're in a worktree (not main repo)
+		if git.IsWorktree(cwd) {
+			mainRepo, err := git.GetMainRepoRoot(cwd)
+			if err != nil {
+				return "", err
+			}
+
+			// Try to get context from .clade.json if it exists
+			cladeFile := filepath.Join(cwd, ".clade.json")
+			if data, err := os.ReadFile(cladeFile); err == nil {
+				var meta map[string]interface{}
+				if json.Unmarshal(data, &meta) == nil {
+					name, _ := meta["name"].(string)
+					label, _ := meta["label"].(string)
+					repoName, _ := meta["repo"].(string)
+					if repoName == "" {
+						repoName = git.GetRepoName(mainRepo)
+					}
+					if name != "" && label != "" {
+						ui.Info("In clade worktree '%s' (%s), using source repo: %s", name, label, repoName)
+					} else if name != "" {
+						ui.Info("In clade worktree '%s', using source repo: %s", name, repoName)
+					} else {
+						ui.Info("In worktree, using main repo: %s", git.GetRepoName(mainRepo))
+					}
+				}
+			} else {
+				// No .clade.json, just show basic message
+				ui.Info("In worktree, using main repo: %s", git.GetRepoName(mainRepo))
+			}
+
+			return mainRepo, nil
+		}
+		// In main repo, just return its root
 		return git.GetRepoRoot(cwd)
 	}
 
@@ -300,7 +197,8 @@ func showRepoPicker(cfg *config.Config) (string, error) {
 
 	cwd, err := os.Getwd()
 	if err == nil && git.IsGitRepo(cwd) {
-		currentRepoPath, _ = git.GetRepoRoot(cwd)
+		// Use GetMainRepoRoot to handle the case where we're in a worktree
+		currentRepoPath, _ = git.GetMainRepoRoot(cwd)
 		repoNames = append(repoNames, "(current directory)")
 	}
 
