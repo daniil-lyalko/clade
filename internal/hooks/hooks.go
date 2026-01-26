@@ -126,10 +126,8 @@ func RunHooks(event Event, env *Env) []Result {
 		if err == nil {
 			for _, cmd := range repoConfig.Hooks[event] {
 				// Commands starting with "!" skip global hooks (handled above)
-				// but we just run them since global hooks already ran
-				if strings.HasPrefix(cmd, "!") {
-					cmd = strings.TrimPrefix(cmd, "!")
-				}
+				// TrimPrefix handles the check internally, no need for if statement
+				cmd = strings.TrimPrefix(cmd, "!")
 				result := runSingleHook(cmd, env)
 				results = append(results, result)
 			}
