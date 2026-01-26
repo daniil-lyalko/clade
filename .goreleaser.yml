@@ -1,0 +1,108 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: clade
+    main: ./cmd/clade
+    binary: clade
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/daniil-lyalko/clade/internal/cmd.Version={{.Version}}
+    mod_timestamp: '{{ .CommitTimestamp }}'
+
+archives:
+  - id: default
+    format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    files:
+      - LICENSE
+      - README.md
+      - CLAUDE.md
+      - scripts/clade-cd.sh
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^ci:'
+  groups:
+    - title: 'Breaking Changes'
+      regexp: '^.*?BREAKING[ ]?CHANGE[:.].*$'
+      order: 0
+    - title: 'New Features'
+      regexp: '^.*?feat(\([[:word:]]+\))?!?:.+$'
+      order: 1
+    - title: 'Bug Fixes'
+      regexp: '^.*?fix(\([[:word:]]+\))?!?:.+$'
+      order: 2
+    - title: 'Security Updates'
+      regexp: '^.*?sec(\([[:word:]]+\))?!?:.+$'
+      order: 3
+    - title: 'Other Changes'
+      order: 999
+
+brews:
+  - name: clade
+    repository:
+      owner: daniil-lyalko
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    folder: Formula
+    homepage: https://github.com/daniil-lyalko/clade
+    description: Git worktree manager with AI coding session context
+    license: MIT
+    dependencies:
+      - name: git
+        type: optional
+    install: |
+      bin.install "clade"
+
+      # Install shell completions
+      generate_completions_from_executable(bin/"clade", "completion")
+
+      # Install helper script
+      (prefix/"scripts").install "scripts/clade-cd.sh"
+    test: |
+      system "#{bin}/clade --version"
+    caveats: |
+      To enable the `ccd` shell function for quick navigation:
+
+        # Add to ~/.zshrc or ~/.bashrc:
+        source $(brew --prefix)/opt/clade/scripts/clade-cd.sh
+
+      Then use:
+        ccd <worktree-name>    # Jump to worktree
+        ccd                    # Interactive picker
+
+release:
+  github:
+    owner: daniil-lyalko
+    name: clade
+  draft: false
+  prerelease: auto
+  mode: append
+  name_template: "v{{.Version}}"

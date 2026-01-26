@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/daniil-lyalko/clade/internal/config"
@@ -223,14 +224,10 @@ func sortWorktreesByLastUsed(worktrees map[string]map[string]*config.Worktree) [
 		}
 	}
 
-	// Sort by last used (descending)
-	for i := 0; i < len(result)-1; i++ {
-		for j := i + 1; j < len(result); j++ {
-			if result[j].Worktree.LastUsed.After(result[i].Worktree.LastUsed) {
-				result[i], result[j] = result[j], result[i]
-			}
-		}
-	}
+	// Sort by last used (descending) - use stdlib instead of bubble sort
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Worktree.LastUsed.After(result[j].Worktree.LastUsed)
+	})
 
 	return result
 }
@@ -376,6 +373,12 @@ func showActionPicker(cfg *config.Config, state *config.State) error {
 
 // runInteractiveNew prompts for name and optional type prefix
 func runInteractiveNew() error {
+	// Load config for label validation
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
 	// First ask for the name
 	namePrompt := promptui.Prompt{
 		Label: "Worktree name",
@@ -406,12 +409,36 @@ func runInteractiveNew() error {
 		return nil // User cancelled
 	}
 
-	// Map selection to type flag
+	// Map selection to type and label config
 	types := []string{"", "spike", "feature", "bug", "chore"}
-	workTypeFlag = types[idx]
-	defer func() { workTypeFlag = "" }()
+	selectedType := types[idx]
 
-	return runWork(workCmd, []string{name})
+	// Determine label and branch prefix
+	var label string
+	var branchPrefix string
+	if selectedType == "" {
+		label = "worktree"
+		branchPrefix = ""
+	} else {
+		labelCfg, ok := cfg.GetLabelConfig(selectedType)
+		if !ok {
+			return fmt.Errorf("unknown type '%s'", selectedType)
+		}
+		label = selectedType
+		branchPrefix = labelCfg.BranchPrefix
+	}
+
+	// Call CreateWorktree directly without mutating globals
+	return CreateWorktree(name, WorktreeConfig{
+		Label:        label,
+		BranchPrefix: branchPrefix,
+	}, WorktreeOptions{
+		// Use flag values from persistent flags (already parsed)
+		EditorFlag:   workEditorFlag,
+		AgentFlag:    workAgentFlag,
+		NoAgentFlag:  workNoAgentFlag,
+		NoEditorFlag: workNoEditorFlag,
+	})
 }
 
 // runInteractiveRepoAdd prompts for a path and adds a repo
@@ -435,14 +462,10 @@ func sortExperimentsByLastUsed(exps map[string]*config.Experiment) []*config.Exp
 		result = append(result, exp)
 	}
 
-	// Bubble sort by last used (descending)
-	for i := 0; i < len(result)-1; i++ {
-		for j := i + 1; j < len(result); j++ {
-			if result[j].LastUsed.After(result[i].LastUsed) {
-				result[i], result[j] = result[j], result[i]
-			}
-		}
-	}
+	// Sort by last used (descending) - use stdlib instead of bubble sort
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].LastUsed.After(result[j].LastUsed)
+	})
 
 	return result
 }
@@ -453,14 +476,10 @@ func sortScratchesByLastUsed(scratches map[string]*config.Scratch) []*config.Scr
 		result = append(result, s)
 	}
 
-	// Bubble sort by last used (descending)
-	for i := 0; i < len(result)-1; i++ {
-		for j := i + 1; j < len(result); j++ {
-			if result[j].LastUsed.After(result[i].LastUsed) {
-				result[i], result[j] = result[j], result[i]
-			}
-		}
-	}
+	// Sort by last used (descending) - use stdlib instead of bubble sort
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].LastUsed.After(result[j].LastUsed)
+	})
 
 	return result
 }

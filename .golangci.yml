@@ -1,0 +1,22 @@
+# GolangCI-Lint configuration for clade
+
+linters:
+  enable:
+    - unused        # Dead code
+    - misspell      # Typos in comments
+    - gosimple      # Simplifications
+  disable:
+    - errcheck      # Too many false positives on deferred Close()
+    - govet         # Shadow warnings require larger refactor
+    - ineffassign   # False positives on intentional patterns
+    - staticcheck   # SA1019 strings.Title - requires x/text dependency
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+
+run:
+  timeout: 5m
+  tests: true

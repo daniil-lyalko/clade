@@ -1,6 +1,7 @@
 package context
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -87,21 +88,24 @@ func formatRelativeTime(t time.Time) string {
 		if mins == 1 {
 			return "1 minute ago"
 		}
-		return string(rune('0'+mins/10)) + string(rune('0'+mins%10)) + " minutes ago"
+		// Fixed: Use fmt.Sprintf instead of broken rune arithmetic
+		return fmt.Sprintf("%d minutes ago", mins)
 	}
 	if d < 24*time.Hour {
 		hours := int(d.Hours())
 		if hours == 1 {
 			return "1 hour ago"
 		}
-		return string(rune('0'+hours/10)) + string(rune('0'+hours%10)) + " hours ago"
+		// Fixed: Use fmt.Sprintf instead of broken rune arithmetic
+		return fmt.Sprintf("%d hours ago", hours)
 	}
 	if d < 48*time.Hour {
 		return "yesterday"
 	}
 	days := int(d.Hours() / 24)
 	if days < 7 {
-		return string(rune('0'+days)) + " days ago"
+		// Fixed: Use fmt.Sprintf to handle any number of days correctly
+		return fmt.Sprintf("%d days ago", days)
 	}
 	return t.Format("Jan 2, 2006")
 }
