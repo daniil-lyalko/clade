@@ -57,15 +57,19 @@ func init() {
 	// Version flag
 	rootCmd.Flags().BoolVarP(&versionFlag, "version", "v", false, "Print version and exit")
 
-	// Add work command flags to root so `clade foo -t spike` works
-	rootCmd.Flags().StringVarP(&workTypeFlag, "type", "t", "", "Type of worktree (feature, bug, spike, chore, hotfix, docs, or custom)")
+	// Common flags used by multiple commands (editor, agent control)
+	// These are persistent so they're available to all subcommands
+	rootCmd.PersistentFlags().StringVarP(&workEditorFlag, "open", "o", "", "Open editor/IDE (cursor, code, nvim)")
+	rootCmd.PersistentFlags().StringVarP(&workAgentFlag, "agent", "a", "", "Override configured agent")
+	rootCmd.PersistentFlags().BoolVar(&workNoAgentFlag, "no-agent", false, "Skip launching the AI agent")
+	rootCmd.PersistentFlags().BoolVar(&workNoEditorFlag, "no-editor", false, "Skip opening the editor")
+
+	// Work-specific flags for the `clade foo` shorthand
+	// These are local to root and will also be on work command
+	rootCmd.Flags().StringVarP(&workTypeFlag, "type", "t", "", "Type of worktree (spike, feature, bug, chore, hotfix, docs)")
 	rootCmd.Flags().StringVarP(&workRepoFlag, "repo", "r", "", "Repository path or registered name")
 	rootCmd.Flags().BoolVarP(&workPickFlag, "pick", "p", false, "Force repo picker")
 	rootCmd.Flags().StringVarP(&workBranchFlag, "branch", "b", "", "Custom branch name")
-	rootCmd.Flags().StringVarP(&workEditorFlag, "open", "o", "", "Open editor/IDE (cursor, code, nvim)")
-	rootCmd.Flags().StringVarP(&workAgentFlag, "agent", "a", "", "Override configured agent")
-	rootCmd.Flags().BoolVar(&workNoAgentFlag, "no-agent", false, "Skip launching the AI agent")
-	rootCmd.Flags().BoolVar(&workNoEditorFlag, "no-editor", false, "Skip opening the editor")
 }
 
 // runRoot handles the root command - either delegates to work or shows interactive dashboard

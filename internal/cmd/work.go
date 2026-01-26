@@ -55,14 +55,11 @@ Creates:
 
 func init() {
 	rootCmd.AddCommand(workCmd)
+	// Command-specific flags (editor/agent flags inherited from root's persistent flags)
 	workCmd.Flags().StringVarP(&workTypeFlag, "type", "t", "", "Type of worktree (spike, feature, bug, chore, hotfix, docs, or custom)")
 	workCmd.Flags().StringVarP(&workRepoFlag, "repo", "r", "", "Repository path or registered name")
 	workCmd.Flags().BoolVarP(&workPickFlag, "pick", "p", false, "Force repo picker")
 	workCmd.Flags().StringVarP(&workBranchFlag, "branch", "b", "", "Custom branch name")
-	workCmd.Flags().StringVarP(&workEditorFlag, "open", "o", "", "Open editor/IDE (cursor, code, nvim)")
-	workCmd.Flags().StringVarP(&workAgentFlag, "agent", "a", "", "Override configured agent")
-	workCmd.Flags().BoolVar(&workNoAgentFlag, "no-agent", false, "Skip launching the AI agent")
-	workCmd.Flags().BoolVar(&workNoEditorFlag, "no-editor", false, "Skip opening the editor")
 }
 
 func runWork(cmd *cobra.Command, args []string) error {
