@@ -16,12 +16,10 @@ import (
 )
 
 var (
-	resumeRepoFlag     string
-	resumeEditorFlag   string
-	resumeBranchFlag   string
-	resumeAgentFlag    string
-	resumeNoAgentFlag  bool
-	resumeNoEditorFlag bool
+	resumeRepoFlag   string
+	resumeBranchFlag string
+	// Editor and agent flags are now persistent flags shared from root
+	// Use workEditorFlag, workAgentFlag, workNoAgentFlag, workNoEditorFlag
 )
 
 var resumeCmd = &cobra.Command{
@@ -55,12 +53,9 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(resumeCmd)
+	// Command-specific flags (editor/agent flags inherited from root's persistent flags)
 	resumeCmd.Flags().StringVarP(&resumeRepoFlag, "repo", "r", "", "Repository for adopting orphaned branches")
-	resumeCmd.Flags().StringVarP(&resumeEditorFlag, "open", "o", "", "Open editor/IDE (cursor, code, nvim)")
-	resumeCmd.Flags().StringVarP(&resumeAgentFlag, "agent", "a", "", "Override configured agent")
 	resumeCmd.Flags().StringVarP(&resumeBranchFlag, "branch", "b", "", "Exact branch name to adopt (e.g., feat/my-feature)")
-	resumeCmd.Flags().BoolVar(&resumeNoAgentFlag, "no-agent", false, "Skip launching the AI agent")
-	resumeCmd.Flags().BoolVar(&resumeNoEditorFlag, "no-editor", false, "Skip opening the editor")
 }
 
 func runResume(cmd *cobra.Command, args []string) error {
@@ -83,10 +78,10 @@ func runResume(cmd *cobra.Command, args []string) error {
 
 	// Build WorktreeOptions from flags
 	opts := WorktreeOptions{
-		EditorFlag:   resumeEditorFlag,
-		AgentFlag:    resumeAgentFlag,
-		NoAgentFlag:  resumeNoAgentFlag,
-		NoEditorFlag: resumeNoEditorFlag,
+		EditorFlag:   workEditorFlag,
+		AgentFlag:    workAgentFlag,
+		NoAgentFlag:  workNoAgentFlag,
+		NoEditorFlag: workNoEditorFlag,
 	}
 
 	// First, check v2 worktrees
@@ -219,10 +214,10 @@ func resumeInteractive(cfg *config.Config, state *config.State) error {
 	}
 
 	opts := WorktreeOptions{
-		EditorFlag:   resumeEditorFlag,
-		AgentFlag:    resumeAgentFlag,
-		NoAgentFlag:  resumeNoAgentFlag,
-		NoEditorFlag: resumeNoEditorFlag,
+		EditorFlag:   workEditorFlag,
+		AgentFlag:    workAgentFlag,
+		NoAgentFlag:  workNoAgentFlag,
+		NoEditorFlag: workNoEditorFlag,
 	}
 
 	switch items[idx].Type {
@@ -310,10 +305,10 @@ func resumeTrackedExperiment(cfg *config.Config, state *config.State, exp *confi
 	}
 
 	return launchWorktreeSession(cfg, exp.Repo, exp.Path, WorktreeOptions{
-		EditorFlag:   resumeEditorFlag,
-		AgentFlag:    resumeAgentFlag,
-		NoAgentFlag:  resumeNoAgentFlag,
-		NoEditorFlag: resumeNoEditorFlag,
+		EditorFlag:   workEditorFlag,
+		AgentFlag:    workAgentFlag,
+		NoAgentFlag:  workNoAgentFlag,
+		NoEditorFlag: workNoEditorFlag,
 	})
 }
 
@@ -358,7 +353,7 @@ func resumeTrackedProject(cfg *config.Config, state *config.State, proj *config.
 		}
 	}
 
-	return launchProjectSessionWithAgent(cfg, proj, resumeEditorFlag, resumeAgentFlag, resumeNoAgentFlag, resumeNoEditorFlag)
+	return launchProjectSessionWithAgent(cfg, proj, workEditorFlag, workAgentFlag, workNoAgentFlag, workNoEditorFlag)
 }
 
 func adoptOrphanedBranch(cfg *config.Config, state *config.State, name string) error {
@@ -449,10 +444,10 @@ func adoptOrphanedBranch(cfg *config.Config, state *config.State, name string) e
 	ui.KeyValue("Path", wtPath)
 
 	return launchWorktreeSession(cfg, repoPath, wtPath, WorktreeOptions{
-		EditorFlag:   resumeEditorFlag,
-		AgentFlag:    resumeAgentFlag,
-		NoAgentFlag:  resumeNoAgentFlag,
-		NoEditorFlag: resumeNoEditorFlag,
+		EditorFlag:   workEditorFlag,
+		AgentFlag:    workAgentFlag,
+		NoAgentFlag:  workNoAgentFlag,
+		NoEditorFlag: workNoEditorFlag,
 	})
 }
 
@@ -491,10 +486,10 @@ func resumeTrackedScratch(cfg *config.Config, state *config.State, scratch *conf
 	}
 
 	return launchWorktreeSession(cfg, "", scratch.Path, WorktreeOptions{
-		EditorFlag:   resumeEditorFlag,
-		AgentFlag:    resumeAgentFlag,
-		NoAgentFlag:  resumeNoAgentFlag,
-		NoEditorFlag: resumeNoEditorFlag,
+		EditorFlag:   workEditorFlag,
+		AgentFlag:    workAgentFlag,
+		NoAgentFlag:  workNoAgentFlag,
+		NoEditorFlag: workNoEditorFlag,
 	})
 }
 

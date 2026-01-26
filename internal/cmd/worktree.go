@@ -164,10 +164,19 @@ func CreateWorktree(name string, wtCfg WorktreeConfig, opts WorktreeOptions) err
 		}
 	}
 
-	// Ensure required .claude files exist
+	// Copy .cursor/ directory if it exists in source repo
+	sourceCursorDir := filepath.Join(repoPath, ".cursor")
+	if _, err := os.Stat(sourceCursorDir); err == nil {
+		ui.Info("Copying .cursor/ configuration...")
+		if err := util.CopyDir(sourceCursorDir, filepath.Join(wtPath, ".cursor")); err != nil {
+			ui.Warn("Failed to copy .cursor/ directory: %v", err)
+		}
+	}
+
+	// Ensure required config files exist (.claude/ and .cursor/)
 	if cfg.AutoInit {
-		if err := EnsureClaudeConfig(wtPath); err != nil {
-			ui.Warn("Failed to ensure .claude/ config: %v", err)
+		if err := EnsureAgentConfig(wtPath); err != nil {
+			ui.Warn("Failed to ensure agent config: %v", err)
 		}
 	}
 

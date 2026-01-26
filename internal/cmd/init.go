@@ -81,6 +81,21 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to write drop.md: %w", err)
 	}
 
+	// Write Cursor hooks.json
+	cursorDir := filepath.Join(repoRoot, ".cursor")
+	if err := os.MkdirAll(cursorDir, 0755); err != nil {
+		ui.Warn("Failed to create .cursor/: %v", err)
+	} else {
+		cursorHooksPath := filepath.Join(cursorDir, "hooks.json")
+		// Only write if it doesn't exist or force flag is set
+		if _, err := os.Stat(cursorHooksPath); os.IsNotExist(err) || initForceFlag {
+			ui.Info("Creating .cursor/hooks.json...")
+			if err := writeCursorHooksJSON(cursorHooksPath); err != nil {
+				ui.Warn("Failed to write .cursor/hooks.json: %v", err)
+			}
+		}
+	}
+
 	// Update .gitignore
 	gitignorePath := filepath.Join(repoRoot, ".gitignore")
 	ui.Info("Updating .gitignore...")
@@ -89,7 +104,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	ui.Success("Clade initialized!")
-	ui.Detail("SessionStart hook will call: clade inject-context")
+	ui.Detail("Claude Code: SessionStart hook calls clade inject-context")
+	ui.Detail("Cursor: sessionStart hook calls clade inject-context --json")
 	ui.Detail("Use /drop to save session context before stopping")
 
 	return nil
@@ -107,6 +123,21 @@ func writeSettingsJSON(path string) error {
             "command": "clade inject-context"
           }
         ]
+      }
+    ]
+  }
+}
+`
+	return os.WriteFile(path, []byte(content), 0644)
+}
+
+func writeCursorHooksJSON(path string) error {
+	content := `{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "clade inject-context --json"
       }
     ]
   }
@@ -195,13 +226,20 @@ func updateGitignore(path string) error {
 	return nil
 }
 
-// InitRepo initializes a repo for clade (used by other commands like exp)
+// InitRepo initializes a repo for clade (used by other commands)
 func InitRepo(repoPath string) error {
 	claudeDir := filepath.Join(repoPath, ".claude")
 	settingsPath := filepath.Join(claudeDir, "settings.json")
 
-	// Skip if already initialized
+	// Skip if already initialized (check Claude config as primary marker)
 	if _, err := os.Stat(settingsPath); err == nil {
+		// Claude config exists - still ensure Cursor config
+		cursorDir := filepath.Join(repoPath, ".cursor")
+		cursorHooksPath := filepath.Join(cursorDir, "hooks.json")
+		if _, err := os.Stat(cursorHooksPath); os.IsNotExist(err) {
+			os.MkdirAll(cursorDir, 0755)
+			writeCursorHooksJSON(cursorHooksPath)
+		}
 		return nil
 	}
 
@@ -215,6 +253,7 @@ func InitRepo(repoPath string) error {
 		return nil
 	}
 
+	// Claude Code config
 	commandsDir := filepath.Join(claudeDir, "commands")
 	if err := os.MkdirAll(commandsDir, 0755); err != nil {
 		return err
@@ -229,22 +268,31 @@ func InitRepo(repoPath string) error {
 		return err
 	}
 
+	// Cursor config
+	cursorDir := filepath.Join(repoPath, ".cursor")
+	if err := os.MkdirAll(cursorDir, 0755); err != nil {
+		return err
+	}
+	cursorHooksPath := filepath.Join(cursorDir, "hooks.json")
+	if err := writeCursorHooksJSON(cursorHooksPath); err != nil {
+		return err
+	}
+
 	gitignorePath := filepath.Join(repoPath, ".gitignore")
 	return updateGitignore(gitignorePath)
 }
 
-// EnsureClaudeConfig ensures required .claude files exist, filling in missing ones.
-// This is called AFTER copying .claude/ from source to handle partial configs.
-func EnsureClaudeConfig(repoPath string) error {
+// EnsureAgentConfig ensures required .claude and .cursor files exist.
+// This is called AFTER copying config dirs from source to handle partial configs.
+func EnsureAgentConfig(repoPath string) error {
+	// Ensure .claude/ config
 	claudeDir := filepath.Join(repoPath, ".claude")
 	commandsDir := filepath.Join(claudeDir, "commands")
 
-	// Ensure directories exist
 	if err := os.MkdirAll(commandsDir, 0755); err != nil {
 		return err
 	}
 
-	// Ensure settings.json exists
 	settingsPath := filepath.Join(claudeDir, "settings.json")
 	if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
 		if err := writeSettingsJSON(settingsPath); err != nil {
@@ -252,10 +300,22 @@ func EnsureClaudeConfig(repoPath string) error {
 		}
 	}
 
-	// Ensure drop.md exists
 	dropPath := filepath.Join(commandsDir, "drop.md")
 	if _, err := os.Stat(dropPath); os.IsNotExist(err) {
 		if err := writeDropCommand(dropPath); err != nil {
+			return err
+		}
+	}
+
+	// Ensure .cursor/ config
+	cursorDir := filepath.Join(repoPath, ".cursor")
+	if err := os.MkdirAll(cursorDir, 0755); err != nil {
+		return err
+	}
+
+	cursorHooksPath := filepath.Join(cursorDir, "hooks.json")
+	if _, err := os.Stat(cursorHooksPath); os.IsNotExist(err) {
+		if err := writeCursorHooksJSON(cursorHooksPath); err != nil {
 			return err
 		}
 	}

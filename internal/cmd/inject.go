@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -9,25 +10,31 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var injectJSONFlag bool
+
 var injectCmd = &cobra.Command{
 	Use:    "inject-context",
-	Short:  "Output session context (called by SessionStart hook)",
+	Short:  "Output session context (called by hooks)",
 	Hidden: true, // Not meant to be called directly by users
-	Long: `Outputs session context to stdout for Claude to consume.
+	Long: `Outputs session context to stdout for the AI agent to consume.
 
-This command is called automatically by the SessionStart hook configured
-by 'clade init'. It gathers:
+This command is called automatically by hooks configured by 'clade init':
+  - Claude Code: SessionStart hook (plain text output)
+  - Cursor: sessionStart hook (JSON output with --json flag)
+
+It gathers:
   - DROPBAG.md contents (session handoff notes)
   - Git status and recent commits
   - Open TODOs in the codebase
   - Ticket information from .clade.json
 
-The output is formatted as markdown for Claude to read.`,
+Use --json for Cursor compatibility (wraps context in JSON with additional_context field).`,
 	RunE: runInjectContext,
 }
 
 func init() {
 	rootCmd.AddCommand(injectCmd)
+	injectCmd.Flags().BoolVar(&injectJSONFlag, "json", false, "Output as JSON (for Cursor hooks)")
 }
 
 func runInjectContext(cmd *cobra.Command, args []string) error {
@@ -51,9 +58,19 @@ func runInjectContext(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to gather context: %w", err)
 	}
 
-	// Format and output
+	// Format context
 	output := context.FormatContext(ctx)
-	fmt.Print(output)
 
+	if injectJSONFlag {
+		// Cursor format: JSON with additional_context field
+		result := map[string]interface{}{
+			"additional_context": output,
+		}
+		enc := json.NewEncoder(os.Stdout)
+		return enc.Encode(result)
+	}
+
+	// Claude Code format: plain text to stdout
+	fmt.Print(output)
 	return nil
 }
