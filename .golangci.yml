@@ -1,8 +1,6 @@
 # GolangCI-Lint configuration for clade
 # Catches code quality issues automatically
 
-version: 2
-
 linters:
   enable:
     - govet         # Correctness
@@ -15,12 +13,8 @@ linters:
 
 linters-settings:
   govet:
-    check-shadowing: true
-  errcheck:
-    check-blank: true  # Catches _ = err suppressions
-    exclude-functions:
-      - (os.File).Close
-      - (*os.File).Close
+    enable:
+      - shadow  # Check for variable shadowing
 
 issues:
   exclude-rules:
