@@ -29,11 +29,14 @@ type ContextOutput struct {
 	Metadata   *CladeMetadata
 	RepoName   string
 	BranchName string
+	Dir        string // Directory where context was gathered (for path resolution)
 }
 
 // GatherContext collects all context information for a directory
 func GatherContext(dir string) (*ContextOutput, error) {
-	ctx := &ContextOutput{}
+	ctx := &ContextOutput{
+		Dir: dir, // Store directory for path resolution in FormatContext
+	}
 
 	// Get repo name and branch
 	ctx.RepoName = git.GetRepoName(dir)
@@ -149,8 +152,9 @@ func FormatContext(ctx *ContextOutput) string {
 		sb.WriteString("## Ticket\n\n")
 		sb.WriteString(fmt.Sprintf("%s detected. ", ctx.Metadata.Ticket))
 
-		// Check if TICKET.md exists
-		ticketPath := filepath.Join(".", "TICKET.md")
+		// Check if TICKET.md exists in the worktree directory
+		// Fixed: Use ctx.Dir instead of "." to resolve path correctly
+		ticketPath := filepath.Join(ctx.Dir, "TICKET.md")
 		if _, err := os.Stat(ticketPath); os.IsNotExist(err) {
 			sb.WriteString("Please fetch from JIRA and save to TICKET.md for reference.\n")
 		} else {

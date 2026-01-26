@@ -1,0 +1,36 @@
+# GolangCI-Lint configuration for clade
+# Catches code quality issues automatically
+
+version: 2
+
+linters:
+  enable:
+    - govet         # Correctness
+    - ineffassign   # Useless assignments
+    - staticcheck   # Comprehensive analysis
+    - unused        # Dead code
+    - misspell      # Typos in comments
+  disable:
+    - errcheck      # Too many false positives on deferred Close() calls
+
+linters-settings:
+  govet:
+    check-shadowing: true
+  errcheck:
+    check-blank: true  # Catches _ = err suppressions
+    exclude-functions:
+      - (os.File).Close
+      - (*os.File).Close
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck  # Allow unchecked errors in tests for brevity
+    - text: "Error return value of `.*\\.Close` is not checked"
+      linters:
+        - errcheck  # Defer close patterns are common and safe
+
+run:
+  timeout: 5m
+  tests: true

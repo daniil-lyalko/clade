@@ -1,0 +1,156 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Removed
+- **BREAKING:** Removed `clade exp` command (deprecated since v0.4)
+  - Use `clade work <name> -t spike` instead
+  - Or shorthand: `clade <name> -t spike`
+- **BREAKING:** Removed `clade feat` command (deprecated since v0.4)
+  - Use `clade work <name> -t feature` instead
+  - Or shorthand: `clade <name> -t feature`
+- Deleted 494 lines of deprecated code (exp.go + feat.go)
+- Extracted shared functions to helpers.go (cleaner architecture)
+
+### Added
+- **Dry-run flag for cleanup**: `clade cleanup <name> --dry-run` to preview deletions
+- CI/CD with GitHub Actions (build, test, lint workflows)
+- GoReleaser configuration for multi-platform releases
+- Homebrew tap support for easy installation
+- Comprehensive test suite with 60%+ coverage on core packages
+  - context package: 78% coverage
+  - hooks package: 93.4% coverage
+  - util package: 93.3% coverage
+  - files package: 60% coverage
+  - config package: 55% coverage
+- Dry-run flag for cleanup command (preview deletions)
+- Enhanced Makefile with coverage reporting and race detection
+- golangci-lint configuration for code quality
+- Shell function helper for quick worktree navigation (clade-cd.sh)
+- Regression tests for all critical bugs
+
+### Changed
+- **SECURITY:** Config and state files now use 0600 permissions (owner-only, not world-readable)
+- **SECURITY:** Removed `--dangerously-skip-permissions` from default agent flags
+  - New users no longer bypass Claude Code safety checks by default
+  - Users can manually add this flag to `~/.config/clade/config.json` if desired
+- **BREAKING:** Go version requirement lowered from 1.24.3 to 1.22 for wider adoption
+- Improved relative time formatting - no more leading zeros ("2 minutes" not "02 minutes")
+- Replaced bubble sort with `sort.Slice` in three locations (better performance and idioms)
+- All dependencies now properly marked as direct vs indirect in go.mod
+
+### Fixed
+- **Critical:** TICKET.md path resolution now checks worktree directory, not process CWD
+  - Previously could incorrectly report missing/present TICKET.md files
+  - Fix prevents context injection bugs when called from subdirectories
+- Relative time formatting for 2-digit numbers (was broken with rune arithmetic)
+  - 2 minutes showed as "02 minutes ago"
+  - 12 hours showed with corrupted output
+- Context gathering now stores directory for proper path resolution
+
+### Security
+- Config files (`~/.config/clade/config.json`) now created with 0600 permissions
+- State files (`~/clade/state.json`) now created with 0600 permissions
+- Removed dangerous default that bypassed safety checks for all new Claude Code users
+- File permission fix applies to both new files and migrated configs
+
+## [0.4.0] - 2026-01-20
+
+### Added
+- Root shortcut: `clade foo` as alias for `clade work foo`
+- First-run wizard for Claude Code/Cursor/Both/Neither selection
+- Cursor IDE compatibility with hooks system
+- `.cursor/hooks.json` generation alongside `.claude/settings.json`
+
+### Changed
+- No branch prefix by default (simplification)
+  - `clade foo` creates branch `foo`, not `feat/foo`
+  - Use `-t/--type` flag to add prefix
+- Project command requires `--experimental` flag
+- Editor opens before agent launches (better UX)
+
+### Deprecated
+- `clade exp` command (use `clade work -t spike`)
+- `clade feat` command (use `clade work -t feature`)
+
+## [0.3.0] - 2025-12-15
+
+### Added
+- Repo-centric directory structure: `~/clade/repos/{repo}/{name}/`
+- Label system (feature, bug, spike, chore, hotfix, docs)
+- Lifecycle hooks (on_create, on_resume, on_remove)
+- State v2 format with worktrees nested by repo
+- `clade migrate` command for v1 → v2 migration
+- Support for custom labels in config
+- DROPBAG archive system with timestamped files
+- Staleness detection for old context
+
+### Changed
+- Worktrees grouped by repository instead of flat experiments directory
+- `.clade.json` now includes label field
+- State format incompatible with v0.2 (migration required)
+
+### Deprecated
+- Legacy experiments directory structure
+- State v1 format (auto-migrated on first run)
+
+## [0.2.0] - 2025-11-01
+
+### Added
+- Multi-repo project workspaces
+- Scratch folders for no-git work
+- Interactive dashboard when run with no args
+- Repo registration system
+- SessionStart hook for context injection
+
+### Changed
+- All Claude Code integration via hooks (no direct MCP)
+- Context injection happens at session start, not during worktree creation
+
+## [0.1.0] - 2025-10-15
+
+### Added
+- Initial release
+- `clade exp` for throwaway experiments
+- `clade feat` for features to merge
+- `clade list` to see active worktrees
+- `clade cleanup` to remove worktrees
+- `clade init` to setup .claude/ config
+- Basic context injection with DROPBAG.md
+
+---
+
+## Migration Guide
+
+### v0.4.0 → v0.5.0 (Unreleased)
+
+**Breaking Changes:**
+None yet (v0.5.0 not released)
+
+**Security Changes:**
+If you have existing config files created with older versions, they may have world-readable permissions. To fix:
+
+```bash
+chmod 600 ~/.config/clade/config.json
+chmod 600 ~/clade/state.json
+```
+
+**Dependency Changes:**
+Go 1.22+ now required (down from 1.24.3). Update your Go installation if needed:
+
+```bash
+go version  # Should show 1.22 or higher
+```
+
+### v0.3.0 → v0.4.0
+
+Run `clade migrate` to convert v1 state format to v2 (repo-centric structure).
+
+### v0.2.0 → v0.3.0
+
+Manual migration required - v0.2.0 used different directory structure.

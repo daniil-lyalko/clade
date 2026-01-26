@@ -220,7 +220,7 @@ clade repo add ~/repos/my-package
 
 ```bash
 clade repo add ~/repos/my-api --name backend
-# Now you can use: clade exp try-redis -r backend
+# Now you can use: clade try-redis -r backend
 ```
 
 ---
@@ -349,26 +349,6 @@ clade foo -a claude                # Override agent
 | `-a`, `--agent` | Override configured agent |
 | `--no-agent` | Skip launching the AI agent |
 | `--no-editor` | Skip opening the editor |
-
----
-
-### `clade exp [name]` (DEPRECATED)
-
-> ⚠️ **Deprecated:** Use `clade work -t spike` instead. Will be removed in v0.5.
-
-```bash
-clade exp try-redis  # Shows deprecation warning, runs as spike
-```
-
----
-
-### `clade feat [name]` (DEPRECATED)
-
-> ⚠️ **Deprecated:** Use `clade work` instead. Will be removed in v0.5.
-
-```bash
-clade feat new-api  # Shows deprecation warning, runs as feature
-```
 
 ---
 
@@ -986,8 +966,7 @@ clade/
 |   |   +-- init.go                 # clade init
 |   |   +-- worktree.go             # Shared worktree creation logic
 |   |   +-- work.go                 # clade work (primary command)
-|   |   +-- exp.go                  # clade exp (deprecated)
-|   |   +-- feat.go                 # clade feat (deprecated)
+|   |   +-- helpers.go              # Shared helpers (repo resolution, session launch)
 |   |   +-- repo.go                 # clade repo add/list/remove
 |   |   +-- project.go              # clade project
 |   |   +-- scratch.go              # clade scratch
@@ -1190,7 +1169,7 @@ go get github.com/spf13/cobra github.com/fatih/color github.com/manifoldco/promp
 
 mkdir -p cmd/clade internal/{cmd,git,context,config,agent,ui} templates
 
-claude "Read CLAUDE.md and implement clade exp first - that's the MVP"
+claude "Read CLAUDE.md and implement the core worktree commands"
 ```
 
 ---
@@ -1238,9 +1217,4 @@ clade resume foo -o code          # Open VS Code on resume
 
 # Experimental
 clade --experimental project foo  # Multi-repo workspace
-
-# Deprecated (still work but show warning)
-clade exp foo                     # → clade foo -t spike
-clade feat foo                    # → clade foo -t feature
-clade work foo                    # → clade foo
 ```

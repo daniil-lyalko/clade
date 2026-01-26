@@ -151,7 +151,8 @@ func migrateFromLegacyPath(newPath string) (bool, error) {
 		return false, err
 	}
 
-	if err := os.WriteFile(newPath, data, 0644); err != nil {
+	// Security: Config files should be owner-only (not world-readable)
+	if err := os.WriteFile(newPath, data, 0600); err != nil {
 		return false, err
 	}
 
@@ -189,14 +190,18 @@ func runFirstRunWizard(cfg *Config) error {
 	switch idx {
 	case 0: // Claude Code
 		cfg.Agent = "claude"
-		cfg.AgentFlags = []string{"--dangerously-skip-permissions"}
+		// Security: Don't add --dangerously-skip-permissions by default
+		// Users can add it manually in config.json if needed
+		cfg.AgentFlags = []string{}
 		cfg.Editor = ""
 	case 1: // Cursor
 		cfg.Agent = ""
 		cfg.Editor = "cursor"
 	case 2: // Both
 		cfg.Agent = "claude"
-		cfg.AgentFlags = []string{"--dangerously-skip-permissions"}
+		// Security: Don't add --dangerously-skip-permissions by default
+		// Users can add it manually in config.json if needed
+		cfg.AgentFlags = []string{}
 		cfg.Editor = "cursor"
 	case 3: // Neither
 		cfg.Agent = ""
@@ -228,7 +233,8 @@ func (c *Config) Save() error {
 		return err
 	}
 
-	return os.WriteFile(configPath, data, 0644)
+	// Security: Config files should be owner-only (not world-readable)
+	return os.WriteFile(configPath, data, 0600)
 }
 
 // ExpandPath expands ~ to home directory

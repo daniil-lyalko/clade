@@ -5,87 +5,36 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/daniil-lyalko/clade/internal/agent"
 	"github.com/daniil-lyalko/clade/internal/config"
-	"github.com/daniil-lyalko/clade/internal/files"
 	"github.com/daniil-lyalko/clade/internal/git"
 	"github.com/daniil-lyalko/clade/internal/ui"
+	"github.com/daniil-lyalko/clade/internal/util"
 	"github.com/manifoldco/promptui"
-	"github.com/spf13/cobra"
 )
 
-var (
-	expRepoFlag     string
-	expPickFlag     bool
-	expBranchFlag   string
-	expEditorFlag   string
-	expNoAgentFlag  bool
-	expNoEditorFlag bool
-)
+// Shared helper functions extracted from deprecated exp.go and feat.go
+// These are used across multiple commands (work, resume, scratch, project)
 
-var expCmd = &cobra.Command{
-	Use:        "exp [name]",
-	Short:      "Create experiment worktree (DEPRECATED: use 'work -t spike')",
-	Deprecated: "use 'clade work -t spike' instead. 'exp' will be removed in v0.5.",
-	Long: `DEPRECATED: Use 'clade work -t spike' instead.
-
-Create an isolated experiment worktree for throwaway spikes.
-
-Examples:
-  clade work try-redis -t spike    # Use 'work -t spike' instead
-  clade exp try-redis              # Still works but deprecated`,
-	Args: cobra.MaximumNArgs(1),
-	RunE: runExp,
+// isValidExpName validates a worktree/project/scratch name
+// Delegates to util.IsValidName for actual validation
+func isValidExpName(name string) bool {
+	return util.IsValidName(name)
 }
 
-func init() {
-	rootCmd.AddCommand(expCmd)
-	expCmd.Flags().StringVarP(&expRepoFlag, "repo", "r", "", "Repository path or registered name")
-	expCmd.Flags().BoolVarP(&expPickFlag, "pick", "p", false, "Force repo picker even if in a git repo")
-	expCmd.Flags().StringVarP(&expBranchFlag, "branch", "b", "", "Custom branch name (skips prompt)")
-	expCmd.Flags().StringVarP(&expEditorFlag, "open", "o", "", "Open editor/IDE (cursor, code, nvim)")
-	expCmd.Flags().BoolVar(&expNoAgentFlag, "no-agent", false, "Skip launching the AI agent")
-	expCmd.Flags().BoolVar(&expNoEditorFlag, "no-editor", false, "Skip opening the editor")
+// extractTicket extracts a JIRA-style ticket ID from a name
+// Delegates to util.ExtractTicket for actual extraction
+func extractTicket(name string) string {
+	return util.ExtractTicket(name)
 }
 
-func runExp(cmd *cobra.Command, args []string) error {
-	// Show deprecation warning
-	ui.Warn("'clade exp' is deprecated. Use 'clade work -t spike' instead.")
-	fmt.Println()
-
-	var name string
-	var err error
-
-	if len(args) > 0 {
-		name = args[0]
-	} else {
-		prompt := promptui.Prompt{
-			Label: "Spike name",
-		}
-		name, err = prompt.Run()
-		if err != nil {
-			return err
-		}
-	}
-
-	// Delegate to the new spike command logic
-	// Use exp/ branch prefix for backward compatibility
-	return CreateWorktree(name, WorktreeConfig{
-		Label:        "spike",
-		BranchPrefix: "exp", // Keep exp/ for backward compatibility
-	}, WorktreeOptions{
-		RepoFlag:     expRepoFlag,
-		PickFlag:     expPickFlag,
-		BranchFlag:   expBranchFlag,
-		EditorFlag:   expEditorFlag,
-		NoAgentFlag:  expNoAgentFlag,
-		NoEditorFlag: expNoEditorFlag,
-	})
-}
-
+// resolveRepo determines which repository to use based on flags and current context
+// Resolution order:
+// 1. Explicit --repo flag (by name or path)
+// 2. Current directory (if it's a git repo)
+// 3. Registered repos (interactive picker)
 func resolveRepo(cfg *config.Config, repoFlag string) (string, error) {
 	// 1. Check if repo flag was provided
 	if repoFlag != "" {
@@ -273,144 +222,4 @@ func launchSession(cfg *config.Config, workdir string, editorOverride string, no
 	}
 
 	return nil
-}
-
-func isValidExpName(name string) bool {
-	if name == "" {
-		return false
-	}
-	matched, _ := regexp.MatchString(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`, name)
-	return matched
-}
-
-// extractTicket extracts a JIRA-style ticket ID from the experiment name
-func extractTicket(name string) string {
-	// Match patterns like PROJ-1234, ABC-123, etc.
-	re := regexp.MustCompile(`^([A-Z]+-\d+)`)
-	matches := re.FindStringSubmatch(strings.ToUpper(name))
-	if len(matches) > 1 {
-		return matches[1]
-	}
-	return ""
-}
-
-func copyDir(src, dst string) error {
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		relPath, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-		dstPath := filepath.Join(dst, relPath)
-
-		if info.IsDir() {
-			return os.MkdirAll(dstPath, info.Mode())
-		}
-
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(dstPath, data, info.Mode())
-	})
-}
-
-func writeJSON(path string, data interface{}) error {
-	file, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	return encoder.Encode(data)
-}
-
-// copyGitignoredFiles handles interactive selection and copying of gitignored files
-func copyGitignoredFiles(cfg *config.Config, srcRepo, dstPath string) error {
-	// Check if we have saved preferences for this repo
-	savedFiles := cfg.GetRepoCopyFiles(srcRepo)
-	if savedFiles != nil {
-		// Use saved preferences
-		if len(savedFiles) > 0 {
-			ui.Info("Copying saved file preferences...")
-			if err := files.CopyFiles(srcRepo, dstPath, savedFiles); err != nil {
-				return err
-			}
-			for _, f := range savedFiles {
-				ui.Detail("  Copied %s", f)
-			}
-		}
-		return nil
-	}
-
-	// No saved preferences - detect and prompt
-	detected := files.FindGitignored(srcRepo)
-	if len(detected) == 0 {
-		return nil
-	}
-
-	fmt.Println()
-	ui.Info("Found gitignored files in source repo:")
-	for _, f := range detected {
-		ui.Detail("  %s", f)
-	}
-	fmt.Println()
-
-	// Interactive selection
-	selected, err := selectFilesToCopy(detected)
-	if err != nil {
-		return nil // User cancelled, not an error
-	}
-
-	// Save preference for future
-	cfg.SetRepoCopyFiles(srcRepo, selected)
-	if err := cfg.Save(); err != nil {
-		ui.Warn("Failed to save file preferences: %v", err)
-	}
-
-	// Copy selected files
-	if len(selected) > 0 {
-		ui.Info("Copying selected files...")
-		if err := files.CopyFiles(srcRepo, dstPath, selected); err != nil {
-			return err
-		}
-		for _, f := range selected {
-			ui.Detail("  Copied %s", f)
-		}
-	}
-
-	return nil
-}
-
-// selectFilesToCopy shows an interactive prompt to select files
-func selectFilesToCopy(detected []string) ([]string, error) {
-	// Simple approach: show list and ask which to copy
-	// For now, use a yes/no per file approach
-
-	var selected []string
-
-	for _, file := range detected {
-		prompt := promptui.Prompt{
-			Label:     fmt.Sprintf("Copy %s", file),
-			IsConfirm: true,
-			Default:   "y",
-		}
-		_, err := prompt.Run()
-		if err == nil {
-			selected = append(selected, file)
-		}
-	}
-
-	// Ask if user wants to save this preference
-	if len(detected) > 0 {
-		fmt.Println()
-		ui.Detail("These preferences will be saved for future experiments from this repo.")
-	}
-
-	return selected, nil
 }

@@ -12,11 +12,39 @@ Named after biological clades (branching groups sharing common ancestry) - perfe
 
 ## Install
 
+### Homebrew (Recommended)
+
+```bash
+brew install daniil-lyalko/tap/clade
+```
+
+Homebrew installation includes shell completions automatically.
+
+### Prebuilt Binaries
+
+Download from [GitHub Releases](https://github.com/daniil-lyalko/clade/releases) for your platform:
+- macOS (Intel): `clade_VERSION_darwin_amd64.tar.gz`
+- macOS (Apple Silicon): `clade_VERSION_darwin_arm64.tar.gz`
+- Linux (x64): `clade_VERSION_linux_amd64.tar.gz`
+- Linux (ARM): `clade_VERSION_linux_arm64.tar.gz`
+
+```bash
+# Extract and install
+tar -xzf clade_*.tar.gz
+sudo mv clade /usr/local/bin/
+clade --version
+```
+
+### From Source
+
+Requires Go 1.22 or higher:
+
 ```bash
 go install github.com/daniil-lyalko/clade/cmd/clade@latest
 ```
 
-Or build from source:
+Or build locally:
+
 ```bash
 git clone https://github.com/daniil-lyalko/clade.git
 cd clade
@@ -25,27 +53,45 @@ make install
 
 ## Shell Completion
 
-### Quick Setup (macOS with Homebrew)
+### Homebrew Installation
+Completions are installed automatically! Just reload your shell:
 ```bash
-clade completion zsh > $(brew --prefix)/share/zsh/site-functions/_clade && exec zsh
+exec zsh  # or: exec bash
 ```
 
-### Linux / Other Systems
-```bash
-# User-local (no sudo required)
-mkdir -p ~/.zsh/completions && \
-  clade completion zsh > ~/.zsh/completions/_clade && \
-  echo 'fpath=(~/.zsh/completions $fpath)' >> ~/.zshrc && \
-  exec zsh
+### Manual Installation
+If installed via other methods, generate completions:
 
-# OR use the Makefile helper (if installed from source)
-make install-completions && exec zsh
+```bash
+# Zsh
+clade completion zsh > ~/.zsh/completions/_clade
+# Add to ~/.zshrc if needed: fpath=(~/.zsh/completions $fpath)
+exec zsh
+
+# Bash
+clade completion bash > /etc/bash_completion.d/clade
+exec bash
+
+# Fish
+clade completion fish > ~/.config/fish/completions/clade.fish
 ```
 
-### Other Shells
+### Quick Navigation Helper (Optional)
+
+Source the `ccd` (clade cd) helper for quick worktree switching:
+
 ```bash
-clade completion bash > /etc/bash_completion.d/clade  # bash
-clade completion fish > ~/.config/fish/completions/clade.fish  # fish
+# Via Homebrew
+echo 'source $(brew --prefix)/opt/clade/scripts/clade-cd.sh' >> ~/.zshrc
+exec zsh
+
+# Manual
+echo 'source /path/to/clade/scripts/clade-cd.sh' >> ~/.zshrc
+exec zsh
+
+# Usage
+ccd foo           # Jump to worktree 'foo'
+ccd               # Interactive picker
 ```
 
 ## Quick Start

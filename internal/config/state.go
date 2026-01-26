@@ -130,7 +130,8 @@ func (s *State) Save(cfg *Config) error {
 		return err
 	}
 
-	return os.WriteFile(statePath, data, 0644)
+	// Security: State files should be owner-only (not world-readable)
+	return os.WriteFile(statePath, data, 0600)
 }
 
 // AddWorktree adds or updates a worktree in v2 state

@@ -16,6 +16,7 @@ import (
 )
 
 var cleanupForceFlag bool
+var cleanupDryRunFlag bool
 
 var cleanupCmd = &cobra.Command{
 	Use:   "cleanup [name]",
@@ -23,10 +24,11 @@ var cleanupCmd = &cobra.Command{
 	Long: `Remove a worktree, project, or scratch folder and optionally delete the branch.
 
 Examples:
-  clade cleanup LEAP-1234           # Clean up worktree
-  clade cleanup my-project          # Clean up project
-  clade cleanup my-scratch          # Clean up scratch folder
-  clade cleanup LEAP-1234 --force   # Skip confirmations`,
+  clade cleanup LEAP-1234             # Clean up worktree
+  clade cleanup my-project            # Clean up project
+  clade cleanup my-scratch            # Clean up scratch folder
+  clade cleanup LEAP-1234 --force     # Skip confirmations
+  clade cleanup LEAP-1234 --dry-run   # Preview what would be deleted`,
 	Args:              cobra.MaximumNArgs(1),
 	RunE:              runCleanup,
 	ValidArgsFunction: completeCleanupNames,
@@ -35,6 +37,7 @@ Examples:
 func init() {
 	rootCmd.AddCommand(cleanupCmd)
 	cleanupCmd.Flags().BoolVarP(&cleanupForceFlag, "force", "f", false, "Skip confirmations")
+	cleanupCmd.Flags().BoolVar(&cleanupDryRunFlag, "dry-run", false, "Show what would be deleted without deleting")
 }
 
 func runCleanup(cmd *cobra.Command, args []string) error {
@@ -147,6 +150,16 @@ func runCleanup(cmd *cobra.Command, args []string) error {
 func cleanupWorktree(cfg *config.Config, state *config.State, repoName string, wt *config.Worktree) error {
 	wtPath := config.WorktreePath(cfg, repoName, wt.Name)
 
+	// Dry-run mode: just show what would be deleted
+	if cleanupDryRunFlag {
+		ui.Info("[DRY RUN] Would clean up worktree: %s", wt.Name)
+		ui.Detail("  Path: %s", wtPath)
+		ui.Detail("  Branch: %s", wt.Branch)
+		ui.Detail("  Label: %s", wt.Label)
+		ui.Detail("  Would prompt for branch deletion")
+		return nil
+	}
+
 	// Find repo path from registered repos
 	repoPath := ""
 	for rName, rPath := range cfg.Repos {
@@ -258,6 +271,15 @@ func cleanupExperiment(cfg *config.Config, state *config.State, key string, exp 
 	ui.KeyValue("Branch", exp.Branch)
 	fmt.Println()
 
+	// Dry-run mode
+	if cleanupDryRunFlag {
+		ui.Info("[DRY RUN] Would clean up experiment: %s", exp.Name)
+		ui.Detail("  Path: %s", exp.Path)
+		ui.Detail("  Branch: %s", exp.Branch)
+		ui.Detail("  Would prompt for branch deletion")
+		return nil
+	}
+
 	// Run on_remove hooks
 	if hooks.HasHooks(hooks.OnRemove, exp.Repo) {
 		ui.Info("Running on_remove hooks...")
@@ -340,6 +362,19 @@ func cleanupProject(cfg *config.Config, state *config.State, name string, proj *
 	ui.KeyValue("Path", proj.Path)
 	ui.KeyValue("Branch", proj.Branch)
 
+	// Dry-run mode
+	if cleanupDryRunFlag {
+		ui.Info("[DRY RUN] Would clean up project: %s", proj.Name)
+		ui.Detail("  Path: %s", proj.Path)
+		ui.Detail("  Branch: %s", proj.Branch)
+		ui.Detail("  Repos: %d worktrees", len(proj.Repos))
+		for _, repo := range proj.Repos {
+			ui.Detail("    - %s (from %s)", repo.Name, filepath.Base(repo.Source))
+		}
+		ui.Detail("  Would prompt for branch deletion")
+		return nil
+	}
+
 	var repoNames []string
 	for _, r := range proj.Repos {
 		repoNames = append(repoNames, r.Name)
@@ -419,6 +454,25 @@ func cleanupScratch(cfg *config.Config, state *config.State, name string, scratc
 	ui.Header("Scratch: %s", scratch.Name)
 	ui.KeyValue("Path", scratch.Path)
 	fmt.Println()
+
+	// Dry-run mode
+	if cleanupDryRunFlag {
+		ui.Info("[DRY RUN] Would clean up scratch folder: %s", scratch.Name)
+		ui.Detail("  Path: %s", scratch.Path)
+		// Count files
+		if entries, err := os.ReadDir(scratch.Path); err == nil {
+			fileCount := 0
+			for _, e := range entries {
+				if !strings.HasPrefix(e.Name(), ".") {
+					fileCount++
+				}
+			}
+			if fileCount > 0 {
+				ui.Detail("  Contains %d file(s)", fileCount)
+			}
+		}
+		return nil
+	}
 
 	// Check if directory has any files (warn user)
 	entries, err := os.ReadDir(scratch.Path)
