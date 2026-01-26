@@ -23,6 +23,31 @@ cd clade
 make install
 ```
 
+## Shell Completion
+
+### Quick Setup (macOS with Homebrew)
+```bash
+clade completion zsh > $(brew --prefix)/share/zsh/site-functions/_clade && exec zsh
+```
+
+### Linux / Other Systems
+```bash
+# User-local (no sudo required)
+mkdir -p ~/.zsh/completions && \
+  clade completion zsh > ~/.zsh/completions/_clade && \
+  echo 'fpath=(~/.zsh/completions $fpath)' >> ~/.zshrc && \
+  exec zsh
+
+# OR use the Makefile helper (if installed from source)
+make install-completions && exec zsh
+```
+
+### Other Shells
+```bash
+clade completion bash > /etc/bash_completion.d/clade  # bash
+clade completion fish > ~/.config/fish/completions/clade.fish  # fish
+```
+
 ## Quick Start
 
 ```bash
@@ -84,12 +109,19 @@ clade status                   # Show context for current dir
 | `--no-agent` | Skip launching agent |
 | `--no-editor` | Skip opening editor |
 
+## Supported AI Tools
+
+- **Claude Code** (CLI) - Full hook integration via `.claude/settings.json`
+- **Cursor** (IDE) - Full hook integration via `.cursor/hooks.json`
+- **Other agents** - Worktree management only (no context injection)
+
 ## How It Works
 
 ### Context Injection
 
-When you run `clade init`, it creates `.claude/settings.json` with a SessionStart hook:
+When you run `clade init`, it creates hook configurations for both Claude Code and Cursor:
 
+**Claude Code** (`.claude/settings.json`):
 ```json
 {
   "hooks": {
@@ -104,15 +136,27 @@ When you run `clade init`, it creates `.claude/settings.json` with a SessionStar
 }
 ```
 
-When Claude/Cursor starts, it automatically receives:
-- **DROPBAG.md** - Your session notes from last time
+**Cursor** (`.cursor/hooks.json`):
+```json
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [{
+      "command": "clade inject-context --json"
+    }]
+  }
+}
+```
+
+When you start a session, the hook automatically injects:
+- **DROPBAG** - Most recent session notes with age + staleness warnings
 - **Git status** - What's changed
 - **Recent commits** - What you've done
 - **TODOs** - Open tasks in code
 
 ### The /drop Command
 
-`clade init` also creates `.claude/commands/drop.md` which tells Claude how to write a DROPBAG.md with session state before you stop working.
+`clade init` creates `.claude/commands/drop.md` which tells the AI to write timestamped session summaries to `.clade/dropbags/DROPBAG-{timestamp}.md`. This preserves full session history and prevents context loss.
 
 ## Configuration
 

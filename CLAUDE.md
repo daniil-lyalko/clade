@@ -92,13 +92,52 @@ Clade fixes all three.
 ```
 {any-worktree}/
 +-- .claude/
-|   +-- settings.json                       # Hooks configuration
+|   +-- settings.json                       # Claude Code hooks
 |   +-- commands/
-|       +-- drop.md                         # /drop command
-+-- .clade.json                             # Clade metadata (ticket, type, etc.)
+|   |   +-- drop.md                         # /drop command template
+|   +-- dropbags/                           # Session handoff archives (gitignored)
+|       +-- DROPBAG-2026-01-26-1430.md      # Timestamped session notes
+|       +-- DROPBAG-2026-01-25-0915.md      # Previous session
++-- .cursor/
+|   +-- hooks.json                          # Cursor IDE hooks
++-- .clade.json                             # Clade metadata (ticket, label, etc.)
 +-- CLAUDE.md                               # Project context
-+-- DROPBAG.md                              # Handoff notes (gitignored)
 ```
+
+### Hook Integration (Claude Code + Cursor)
+
+Clade supports both Claude Code CLI and Cursor IDE through their respective hook systems:
+
+**Claude Code** (`.claude/settings.json`):
+- Hook: `SessionStart` → runs `clade inject-context`
+- Output: Plain text to stdout
+- Context injected into conversation
+
+**Cursor** (`.cursor/hooks.json`):
+- Hook: `sessionStart` → runs `clade inject-context --json`
+- Output: JSON with `{"additional_context": "..."}`
+- Context prepended to system prompt
+
+Both receive:
+- Most recent DROPBAG from last session (with age + staleness warnings)
+- Git status and recent commits
+- Open TODOs in the codebase
+- Ticket information from .clade.json
+
+**Verifying hooks work:**
+```bash
+# Test Claude Code format
+clade inject-context
+
+# Test Cursor format
+clade inject-context --json
+```
+
+**DROPBAG Archives:**
+- `/drop` creates timestamped files: `.clade/dropbags/DROPBAG-2026-01-26-1430.md`
+- Most recent file is auto-injected at SessionStart
+- Staleness warning appears if >2 days old
+- Full session history preserved (no auto-deletion)
 
 ---
 

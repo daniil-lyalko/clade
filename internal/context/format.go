@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/daniil-lyalko/clade/internal/git"
 )
@@ -75,7 +76,22 @@ func FormatContext(ctx *ContextOutput) string {
 
 	// DROPBAG.md section
 	if ctx.Dropbag != nil && ctx.Dropbag.Exists {
-		sb.WriteString(fmt.Sprintf("## DROPBAG.md (from %s)\n\n", ctx.Dropbag.RelativeAge))
+		header := fmt.Sprintf("## DROPBAG (from %s)", ctx.Dropbag.RelativeAge)
+
+		// Add stale warning if >2 days old
+		age := time.Since(ctx.Dropbag.ModTime)
+		isStale := age > 48*time.Hour
+
+		if isStale {
+			header += " ⚠️  STALE"
+		}
+		sb.WriteString(header + "\n\n")
+
+		// Prompt to update if stale
+		if isStale {
+			sb.WriteString("_Consider updating with /drop if context has changed since last session_\n\n")
+		}
+
 		sb.WriteString(ctx.Dropbag.Content)
 		sb.WriteString("\n\n")
 	}

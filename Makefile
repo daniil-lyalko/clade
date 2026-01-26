@@ -34,3 +34,18 @@ fmt:
 
 lint:
 	golangci-lint run
+
+# Shell completion setup
+install-completions:
+	@echo "Installing zsh completions..."
+	@if command -v brew >/dev/null 2>&1; then \
+		$(INSTALL_DIR)/$(BINARY) completion zsh > $$(brew --prefix)/share/zsh/site-functions/_clade && \
+		echo "✓ Installed to Homebrew site-functions" && \
+		echo "  Reload shell: exec zsh"; \
+	else \
+		mkdir -p ~/.zsh/completions && \
+		$(INSTALL_DIR)/$(BINARY) completion zsh > ~/.zsh/completions/_clade && \
+		echo "✓ Installed to ~/.zsh/completions" && \
+		echo "  Add to ~/.zshrc if not present: fpath=(~/.zsh/completions \$$fpath)" && \
+		echo "  Reload shell: exec zsh"; \
+	fi

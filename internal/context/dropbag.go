@@ -15,31 +15,63 @@ type DropbagInfo struct {
 	RelativeAge string
 }
 
-// ReadDropbag reads the DROPBAG.md file from a directory
+// ReadDropbag reads the most recent DROPBAG-*.md file from .clade/dropbags/
 func ReadDropbag(dir string) (*DropbagInfo, error) {
-	path := filepath.Join(dir, "DROPBAG.md")
+	archiveDir := filepath.Join(dir, ".clade", "dropbags")
 
 	info := &DropbagInfo{
 		Exists: false,
 	}
 
-	stat, err := os.Stat(path)
+	// Read directory entries
+	entries, err := os.ReadDir(archiveDir)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return info, nil
+		// Directory doesn't exist or can't read - no DROPBAG available
+		return info, nil
+	}
+
+	var newestFile string
+	var newestTime time.Time
+
+	// Find most recent DROPBAG-*.md file
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), "DROPBAG-") || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
 		}
-		return nil, err
+
+		path := filepath.Join(archiveDir, entry.Name())
+		stat, err := os.Stat(path)
+		if err != nil {
+			continue
+		}
+
+		if newestFile == "" || stat.ModTime().After(newestTime) {
+			newestFile = path
+			newestTime = stat.ModTime()
+		}
 	}
 
-	data, err := os.ReadFile(path)
+	// No DROPBAG files found
+	if newestFile == "" {
+		return info, nil
+	}
+
+	// Read the most recent file
+	data, err := os.ReadFile(newestFile)
 	if err != nil {
 		return nil, err
 	}
 
-	info.Content = strings.TrimSpace(string(data))
-	info.ModTime = stat.ModTime()
+	content := strings.TrimSpace(string(data))
+	if content == "" {
+		// Skip empty files
+		return info, nil
+	}
+
+	info.Content = content
+	info.ModTime = newestTime
 	info.Exists = true
-	info.RelativeAge = formatRelativeTime(stat.ModTime())
+	info.RelativeAge = formatRelativeTime(newestTime)
 
 	return info, nil
 }

@@ -147,7 +147,27 @@ func writeCursorHooksJSON(path string) error {
 }
 
 func writeDropCommand(path string) error {
-	content := `Write a DROPBAG.md file in the repo root with the following sections:
+	content := `Create a timestamped session summary in .clade/dropbags/:
+
+1. Create directory if needed:
+   ` + "```bash" + `
+   mkdir -p .clade/dropbags
+   ` + "```" + `
+
+2. Optionally read the most recent DROPBAG for continuity:
+   ` + "```bash" + `
+   ls -t .clade/dropbags/DROPBAG-*.md 2>/dev/null | head -1
+   ` + "```" + `
+
+3. Write new timestamped file:
+   ` + "```bash" + `
+   TIMESTAMP=$(date +%Y-%m-%d-%H%M)
+   cat > .clade/dropbags/DROPBAG-$TIMESTAMP.md <<'EOF'
+   [your content here]
+   EOF
+   ` + "```" + `
+
+The new file should contain:
 
 ## Summary
 What we accomplished this session. Be specific about changes made.
@@ -166,14 +186,14 @@ Anything unresolved or decisions that need to be made.
 
 ---
 
-Save the file to DROPBAG.md in the repository root, then confirm it's written.
+After saving, confirm the timestamped file was created successfully.
 `
 	return os.WriteFile(path, []byte(content), 0644)
 }
 
 func updateGitignore(path string) error {
 	linesToAdd := []string{
-		"DROPBAG.md",
+		".clade/",
 		".clade.json",
 	}
 
