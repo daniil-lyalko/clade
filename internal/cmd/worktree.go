@@ -356,86 +356,32 @@ func RegisterCopyGitignoredFiles(fn func(cfg *config.Config, srcRepo, dstPath st
 }
 
 func init() {
-	// Register the implementation from exp.go when the package loads
-	// This is a workaround for avoiding circular imports
 	RegisterCopyGitignoredFiles(func(cfg *config.Config, srcRepo, dstPath string) error {
-		// Check if we have saved preferences for this repo
-		savedFiles := cfg.GetRepoCopyFiles(srcRepo)
-		if savedFiles != nil {
-			// Use saved preferences
-			if len(savedFiles) > 0 {
-				ui.Info("Copying saved file preferences...")
-				if err := files.CopyFiles(srcRepo, dstPath, savedFiles); err != nil {
-					return err
-				}
-				for _, f := range savedFiles {
-					ui.Detail("  Copied %s", f)
-				}
-			}
+		// Build the file list: defaults + global config extras + per-repo extras
+		patterns := make([]string, 0, len(files.DefaultCopyFiles)+len(cfg.CopyFiles))
+		patterns = append(patterns, files.DefaultCopyFiles...)
+		patterns = append(patterns, cfg.CopyFiles...)
+
+		// Add per-repo extras if configured
+		if repoFiles := cfg.GetRepoCopyFiles(srcRepo); len(repoFiles) > 0 {
+			patterns = append(patterns, repoFiles...)
+		}
+
+		// Find which files actually exist in the source repo
+		found := files.FindCopyableFiles(srcRepo, patterns)
+		if len(found) == 0 {
 			return nil
 		}
 
-		// No saved preferences - detect and prompt
-		detected := files.FindGitignored(srcRepo)
-		if len(detected) == 0 {
-			return nil
+		// Auto-copy without prompting
+		ui.Info("Copying config files...")
+		if err := files.CopyFiles(srcRepo, dstPath, found); err != nil {
+			return err
 		}
-
-		fmt.Println()
-		ui.Info("Found gitignored files in source repo:")
-		for _, f := range detected {
-			ui.Detail("  %s", f)
-		}
-		fmt.Println()
-
-		// Interactive selection
-		selected, err := selectFilesToCopyForWorktree(detected)
-		if err != nil {
-			return nil // User cancelled, not an error
-		}
-
-		// Save preference for future
-		cfg.SetRepoCopyFiles(srcRepo, selected)
-		if err := cfg.Save(); err != nil {
-			ui.Warn("Failed to save file preferences: %v", err)
-		}
-
-		// Copy selected files
-		if len(selected) > 0 {
-			ui.Info("Copying selected files...")
-			if err := files.CopyFiles(srcRepo, dstPath, selected); err != nil {
-				return err
-			}
-			for _, f := range selected {
-				ui.Detail("  Copied %s", f)
-			}
+		for _, f := range found {
+			ui.Detail("  Copied %s", f)
 		}
 
 		return nil
 	})
-}
-
-// selectFilesToCopyForWorktree shows an interactive prompt to select files
-func selectFilesToCopyForWorktree(detected []string) ([]string, error) {
-	var selected []string
-
-	for _, file := range detected {
-		prompt := promptui.Prompt{
-			Label:     fmt.Sprintf("Copy %s", file),
-			IsConfirm: true,
-			Default:   "y",
-		}
-		_, err := prompt.Run()
-		if err == nil {
-			selected = append(selected, file)
-		}
-	}
-
-	// Ask if user wants to save this preference
-	if len(detected) > 0 {
-		fmt.Println()
-		ui.Detail("These preferences will be saved for future worktrees from this repo.")
-	}
-
-	return selected, nil
 }

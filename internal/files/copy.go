@@ -3,75 +3,58 @@ package files
 import (
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 )
 
-// ExcludeFiles - OS junk files, never prompt for these
-var ExcludeFiles = []string{
-	".DS_Store",
-	"Thumbs.db",
-	"desktop.ini",
-	".Spotlight-V100",
-	".Trashes",
-	"ehthumbs.db",
+// DefaultCopyFiles are common config files that should be copied to worktrees.
+// These are typically gitignored but needed for the project to run.
+// Keep this list short and sensible — users can extend it in config.
+var DefaultCopyFiles = []string{
+	// Environment files
+	".env",
+	".env.local",
+	".env.development",
+	".env.development.local",
+	".env.test",
+	".env.test.local",
+	".env.production.local",
+	// Package manager configs (may contain registry auth)
+	".npmrc",
+	".yarnrc",
+	".yarnrc.yml",
+	// Version manager files
+	".tool-versions",
+	".nvmrc",
+	".python-version",
+	".ruby-version",
+	".node-version",
+	".go-version",
+	// IDE / local overrides
+	".vscode/settings.json",
 }
 
-// FindGitignored finds all gitignored FILES (not directories) that exist in the repo.
-// Uses git's native gitignore parsing which handles:
-// - .gitignore at any level
-// - Global gitignore (~/.config/git/ignore)
-// - .git/info/exclude
-func FindGitignored(repoPath string) []string {
-	// Use git to find all ignored files that exist
-	// --others: untracked files only
-	// --ignored: show ignored files
-	// --exclude-standard: use standard ignore rules (.gitignore, global, etc.)
-	cmd := exec.Command("git", "ls-files", "--others", "--ignored", "--exclude-standard")
-	cmd.Dir = repoPath
-	output, err := cmd.Output()
-	if err != nil {
-		// Fallback to empty if git command fails
-		return nil
-	}
-
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+// FindCopyableFiles checks the source repo for files from the given list that exist.
+// Returns only the files that are present and are regular files (not directories).
+func FindCopyableFiles(repoPath string, patterns []string) []string {
+	seen := make(map[string]bool)
 	var found []string
 
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
+	for _, pattern := range patterns {
+		if seen[pattern] {
 			continue
 		}
+		seen[pattern] = true
 
-		// Skip OS junk files
-		if isExcluded(filepath.Base(line)) {
-			continue
-		}
-
-		// Verify it's a file (not a directory) and exists
-		fullPath := filepath.Join(repoPath, line)
+		fullPath := filepath.Join(repoPath, pattern)
 		info, err := os.Stat(fullPath)
-		if err != nil || info.IsDir() {
-			continue
+		if err == nil && !info.IsDir() {
+			found = append(found, pattern)
 		}
-
-		found = append(found, line)
 	}
 
 	return found
 }
 
-// isExcluded checks if a filename is in the OS junk exclusion list
-func isExcluded(filename string) bool {
-	for _, excluded := range ExcludeFiles {
-		if filename == excluded {
-			return true
-		}
-	}
-	return false
-}
 
 // CopyFiles copies specified files from src to dst directory
 func CopyFiles(srcDir, dstDir string, files []string) error {

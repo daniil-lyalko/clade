@@ -693,6 +693,7 @@ This sets `agent` and `editor` appropriately. You can always edit the config lat
     "my-package": "~/repos/my-package"
   },
   "last_repo": "my-api",
+  "copy_files": ["config/local.json"],
   "custom_labels": {
     "perf": { "branch_prefix": "perf", "merge_expected": true },
     "research": { "branch_prefix": "research", "merge_expected": false }
@@ -709,6 +710,7 @@ This sets `agent` and `editor` appropriately. You can always edit the config lat
 | `auto_init` | `true` | Auto-run `clade init` on new worktrees |
 | `repos` | `{}` | Registered repos (name -> path mapping) |
 | `last_repo` | `null` | Last used repo (for picker default) |
+| `copy_files` | `[]` | Extra files to copy to worktrees (beyond built-in defaults) |
 | `custom_labels` | `{}` | Custom labels for `clade -t <label>` |
 
 **Agent vs Editor:**
@@ -753,26 +755,51 @@ CLADE_BRANCH=spike/try-redis
 CLADE_TICKET=PROJ-1234  # if detected
 ```
 
+**Automatic File Copying:**
+
+When creating a worktree, clade automatically copies common config files from the source repo (if they exist). These are files that are typically gitignored but needed to run the project:
+
+```
+.env, .env.local, .env.development, .env.test, etc.
+.npmrc, .yarnrc, .yarnrc.yml
+.tool-versions, .nvmrc, .python-version, .ruby-version, .node-version, .go-version
+.vscode/settings.json
+```
+
+No prompting — files from the default list are copied automatically and silently.
+
+**Adding Extra Files:**
+
+To copy additional files beyond the defaults, add them to your config:
+
+```json
+// ~/.config/clade/config.json
+{
+  "copy_files": ["config/local.json", ".env.staging"],
+
+  "repo_settings": {
+    "/path/to/specific/repo": {
+      "copy_files": ["secrets/dev.json", "terraform.tfvars"]
+    }
+  }
+}
+```
+
+- `copy_files` (top-level): Extra files copied for ALL repos
+- `repo_settings.{path}.copy_files`: Extra files for a specific repo only
+- Both are additive on top of the built-in defaults
+
 **Custom File Copying via Hooks:**
 
-For repos with unique file copying needs beyond the standard gitignore detection, use `on_create` hooks. This is the recommended approach for project-specific files:
+For complex scenarios (generated files, conditional copying, symlinks), use `on_create` hooks:
 
 ```yaml
 # {repo}/.clade/hooks.yaml (per-repo)
 hooks:
   on_create:
-    # Copy secrets from main worktree (parent directory)
     - cp "$CLADE_REPO_PATH/config/secrets.json" ./config/ 2>/dev/null || true
-    - cp "$CLADE_REPO_PATH/credentials.json" ./ 2>/dev/null || true
-    # Generate local config from template
     - envsubst < config/local.template.json > config/local.json 2>/dev/null || true
 ```
-
-This approach:
-- Gives power users full control over file copying
-- Handles edge cases (generated files, symlinks, conditional copying)
-- Doesn't require changes to clade itself
-- Uses familiar shell scripting
 
 ---
 

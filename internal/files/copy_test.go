@@ -9,25 +9,48 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestIsExcluded(t *testing.T) {
-	tests := []struct {
-		filename string
-		excluded bool
-	}{
-		{".DS_Store", true},
-		{"Thumbs.db", true},
-		{"desktop.ini", true},
-		{"regular-file.txt", false},
-		{".gitignore", false},
-		{"somefile.db", false},
-	}
+func TestFindCopyableFiles(t *testing.T) {
+	tmpDir := t.TempDir()
 
-	for _, tt := range tests {
-		t.Run(tt.filename, func(t *testing.T) {
-			result := isExcluded(tt.filename)
-			assert.Equal(t, tt.excluded, result)
-		})
-	}
+	// Create some files
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".env"), []byte("SECRET=x"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".npmrc"), []byte("registry=..."), 0644))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "subdir"), 0755))
+
+	patterns := []string{".env", ".npmrc", ".env.local", "missing.txt"}
+	found := FindCopyableFiles(tmpDir, patterns)
+
+	assert.Equal(t, []string{".env", ".npmrc"}, found)
+}
+
+func TestFindCopyableFiles_Deduplicates(t *testing.T) {
+	tmpDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".env"), []byte("x"), 0644))
+
+	patterns := []string{".env", ".env", ".env"}
+	found := FindCopyableFiles(tmpDir, patterns)
+
+	assert.Equal(t, []string{".env"}, found)
+}
+
+func TestFindCopyableFiles_SkipsDirectories(t *testing.T) {
+	tmpDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "node_modules"), 0755))
+
+	patterns := []string{"node_modules"}
+	found := FindCopyableFiles(tmpDir, patterns)
+
+	assert.Empty(t, found)
+}
+
+func TestFindCopyableFiles_Empty(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	found := FindCopyableFiles(tmpDir, []string{".env"})
+	assert.Empty(t, found)
+
+	found = FindCopyableFiles(tmpDir, nil)
+	assert.Empty(t, found)
 }
 
 func TestCopyFiles_Basic(t *testing.T) {
@@ -120,12 +143,10 @@ func TestCopyFile_Basic(t *testing.T) {
 	assert.Equal(t, "test content", string(content))
 }
 
-func TestFindGitignored_RequiresGitRepo(t *testing.T) {
-	// Test that FindGitignored handles non-git directories gracefully
-	tmpDir := t.TempDir()
-
-	files := FindGitignored(tmpDir)
-
-	// Should return nil/empty, not error
-	assert.Empty(t, files)
+func TestDefaultCopyFiles_ContainsEssentials(t *testing.T) {
+	// Verify the defaults include the most common files
+	essentials := []string{".env", ".env.local", ".npmrc", ".nvmrc", ".tool-versions"}
+	for _, f := range essentials {
+		assert.Contains(t, DefaultCopyFiles, f, "DefaultCopyFiles should include %s", f)
+	}
 }

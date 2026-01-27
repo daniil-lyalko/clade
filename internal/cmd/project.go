@@ -471,63 +471,27 @@ func writeProjectJSON(path string, data interface{}) error {
 	return encoder.Encode(data)
 }
 
-// copyGitignoredFilesForProject handles copying of gitignored files for each repo in a project
-// Uses saved preferences if available, otherwise prompts interactively
+// copyGitignoredFilesForProject handles copying of config files for each repo in a project
 func copyGitignoredFilesForProject(cfg *config.Config, srcRepo, dstPath string) error {
-	// Check if we have saved preferences for this repo
-	savedFiles := cfg.GetRepoCopyFiles(srcRepo)
+	// Build the file list: defaults + global config extras + per-repo extras
+	patterns := make([]string, 0, len(files.DefaultCopyFiles)+len(cfg.CopyFiles))
+	patterns = append(patterns, files.DefaultCopyFiles...)
+	patterns = append(patterns, cfg.CopyFiles...)
 
-	if savedFiles != nil {
-		// Use saved preferences silently
-		if len(savedFiles) > 0 {
-			if err := files.CopyFiles(srcRepo, dstPath, savedFiles); err != nil {
-				return err
-			}
-			for _, f := range savedFiles {
-				ui.Detail("    Copied %s", f)
-			}
-		}
+	if repoFiles := cfg.GetRepoCopyFiles(srcRepo); len(repoFiles) > 0 {
+		patterns = append(patterns, repoFiles...)
+	}
+
+	found := files.FindCopyableFiles(srcRepo, patterns)
+	if len(found) == 0 {
 		return nil
 	}
 
-	// No saved preferences - detect and prompt
-	detected := files.FindGitignored(srcRepo)
-	if len(detected) == 0 {
-		return nil
+	if err := files.CopyFiles(srcRepo, dstPath, found); err != nil {
+		return err
 	}
-
-	repoName := filepath.Base(srcRepo)
-	fmt.Println()
-	ui.Info("Found gitignored files in %s:", repoName)
-	for _, f := range detected {
-		ui.Detail("  %s", f)
-	}
-
-	// Interactive selection
-	var selected []string
-	for _, file := range detected {
-		prompt := promptui.Prompt{
-			Label:     fmt.Sprintf("Copy %s", file),
-			IsConfirm: true,
-			Default:   "y",
-		}
-		_, err := prompt.Run()
-		if err == nil {
-			selected = append(selected, file)
-		}
-	}
-
-	// Save preference for future
-	cfg.SetRepoCopyFiles(srcRepo, selected)
-	if err := cfg.Save(); err != nil {
-		ui.Warn("Failed to save file preferences: %v", err)
-	}
-
-	// Copy selected files
-	if len(selected) > 0 {
-		if err := files.CopyFiles(srcRepo, dstPath, selected); err != nil {
-			return err
-		}
+	for _, f := range found {
+		ui.Detail("    Copied %s", f)
 	}
 
 	return nil

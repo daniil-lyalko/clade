@@ -32,6 +32,7 @@ type Config struct {
 	LastRepo           string                  `json:"last_repo"`
 	TmuxSplitDirection string                  `json:"tmux_split_direction,omitempty"`
 	CustomLabels       map[string]LabelConfig  `json:"custom_labels,omitempty"`
+	CopyFiles          []string                `json:"copy_files,omitempty"` // Additional files to copy to worktrees (beyond defaults)
 }
 
 // DefaultConfig returns a config with default values
