@@ -25,16 +25,17 @@ This command is called automatically by hooks configured by 'clade init':
   - Claude Code: SessionStart hook (plain text output)
   - Cursor: sessionStart hook (JSON output, auto-detected)
 
-The output format is auto-detected based on how the command is invoked:
-  - If stdin is a pipe (Cursor), outputs JSON with additional_context field
-  - If stdin is a terminal (Claude Code), outputs plain text
+The output format is auto-detected based on the calling agent:
+  - Claude Code sets CLAUDE_PROJECT_DIR env var → plain text to stdout
+  - Cursor does not set CLAUDE_PROJECT_DIR → JSON with additional_context
+  - Terminal (manual test) → plain text to stdout
 
 When Cursor loads both .cursor/hooks.json and .claude/settings.json (via
 "Third-party hooks"), deduplication prevents double injection: the second
 call within 3 seconds outputs nothing.
 
 Use 'clade inject-context' from a terminal to test plain text output.
-Use 'echo {} | clade inject-context' to test JSON output.`,
+Use 'echo {} | clade inject-context --json' to test JSON output.`,
 	RunE: runInjectContext,
 }
 
@@ -65,7 +66,7 @@ func runInjectContext(cmd *cobra.Command, args []string) error {
 	// This prevents double injection when Cursor fires both its own
 	// .cursor/hooks.json and Claude's .claude/settings.json hooks.
 	if wasRecentlyInjected(dir) {
-		if isCursorHook() {
+		if needsJSONOutput() {
 			// Cursor expects valid JSON even for empty responses
 			return json.NewEncoder(os.Stdout).Encode(map[string]string{"additional_context": ""})
 		}
@@ -83,24 +84,38 @@ func runInjectContext(cmd *cobra.Command, args []string) error {
 	output := context.FormatContext(ctx)
 
 	// Auto-detect output format:
-	// - Cursor pipes JSON to stdin → output JSON with additional_context
-	// - Claude Code attaches to TTY → output plain text
-	// The explicit --json flag also triggers JSON mode for backwards compat.
-	if isCursorHook() || injectJSONFlag {
+	// - Claude Code sets CLAUDE_PROJECT_DIR → plain text to stdout
+	// - Cursor does not set CLAUDE_PROJECT_DIR → JSON with additional_context
+	// - The explicit --json flag also triggers JSON mode for backwards compat.
+	if needsJSONOutput() {
 		result := map[string]string{
 			"additional_context": output,
 		}
 		return json.NewEncoder(os.Stdout).Encode(result)
 	}
 
-	// Claude Code format: plain text to stdout
+	// Claude Code (and terminal) format: plain text to stdout
 	fmt.Print(output)
 	return nil
 }
 
-// isCursorHook detects whether the command was invoked by Cursor.
-// Cursor pipes JSON on stdin; Claude Code runs with stdin attached to a TTY.
-func isCursorHook() bool {
+// needsJSONOutput determines whether to output JSON (Cursor) or plain text (Claude Code).
+//
+// Claude Code sets CLAUDE_PROJECT_DIR when spawning hook commands, so its
+// presence reliably identifies Claude Code. Both Claude Code and Cursor pipe
+// JSON to stdin, so stdin pipe detection alone cannot distinguish them.
+//
+// The --json flag is kept for backwards compatibility with existing Cursor
+// hook configs that explicitly pass it.
+func needsJSONOutput() bool {
+	if injectJSONFlag {
+		return true
+	}
+	// Claude Code always sets CLAUDE_PROJECT_DIR for hook commands.
+	if os.Getenv("CLAUDE_PROJECT_DIR") != "" {
+		return false
+	}
+	// No CLAUDE_PROJECT_DIR and stdin is piped → likely Cursor.
 	stat, err := os.Stdin.Stat()
 	if err != nil {
 		return false
