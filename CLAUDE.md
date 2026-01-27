@@ -114,8 +114,8 @@ Clade supports both Claude Code CLI and Cursor IDE through their respective hook
 - Context injected into conversation
 
 **Cursor** (`.cursor/hooks.json`):
-- Hook: `sessionStart` → runs `clade inject-context --json`
-- Output: JSON with `{"additional_context": "..."}`
+- Hook: `sessionStart` → runs `clade inject-context`
+- Output: JSON with `{"additional_context": "..."}` (auto-detected)
 - Context prepended to system prompt
 
 Both receive:
@@ -124,13 +124,23 @@ Both receive:
 - Open TODOs in the codebase
 - Ticket information from .clade.json
 
+**Format auto-detection:** `inject-context` detects Cursor vs Claude Code by
+checking if stdin is a pipe (Cursor) or a terminal (Claude Code). No `--json`
+flag is needed — the `--json` flag is deprecated and kept only for backwards
+compatibility.
+
+**Deduplication:** Cursor may fire both `.cursor/hooks.json` and
+`.claude/settings.json` hooks (via its "Third-party hooks" feature). To prevent
+double injection, the second call within 3 seconds for the same directory is
+silently skipped.
+
 **Verifying hooks work:**
 ```bash
-# Test Claude Code format
+# Test Claude Code format (plain text)
 clade inject-context
 
-# Test Cursor format
-clade inject-context --json
+# Test Cursor format (simulates piped stdin → JSON output)
+echo '{}' | clade inject-context
 ```
 
 **DROPBAG Archives:**
@@ -611,9 +621,13 @@ To perform this migration, run:
 
 ### `clade inject-context`
 
-**Purpose:** Called by SessionStart hook. Outputs context to stdout for Claude.
+**Purpose:** Called by SessionStart hook. Outputs context to stdout for the AI agent.
 
-**Not user-facing** - the hook calls this automatically.
+**Not user-facing** - the hook calls this automatically. Output format is auto-detected:
+- **Terminal (Claude Code):** plain Markdown text
+- **Piped stdin (Cursor):** JSON with `additional_context` field
+
+Includes deduplication: if Cursor fires both `.cursor/` and `.claude/` hooks, the second call within 3 seconds is silently skipped.
 
 ```bash
 # Called automatically by hook, but you can test it:
