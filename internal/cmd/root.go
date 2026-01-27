@@ -83,11 +83,68 @@ func runRoot(cmd *cobra.Command, args []string) error {
 
 	// If a name is provided, delegate to work command
 	if len(args) > 0 {
+		// Guard against typos of subcommands being silently treated as
+		// worktree names (e.g. "clade injext-context" → creating a worktree
+		// instead of erroring). Cobra's built-in "Did you mean?" is bypassed
+		// because root has RunE set.
+		if suggestion := suggestSubcommand(cmd, args[0]); suggestion != "" {
+			return fmt.Errorf("unknown command %q\n\nDid you mean:\n  clade %s\n\nRun 'clade --help' for usage", args[0], suggestion)
+		}
 		return runWork(cmd, args)
 	}
 
 	// No args - show interactive dashboard
 	return runInteractiveDashboard(cmd, args)
+}
+
+// suggestSubcommand checks if the given name is within edit distance 2 of any
+// registered subcommand. Returns the closest match, or "" if none are close.
+func suggestSubcommand(cmd *cobra.Command, name string) string {
+	bestDist := 3 // threshold: only suggest if distance <= 2
+	bestMatch := ""
+	for _, sub := range cmd.Commands() {
+		d := levenshtein(name, sub.Name())
+		if d > 0 && d < bestDist {
+			bestDist = d
+			bestMatch = sub.Name()
+		}
+	}
+	return bestMatch
+}
+
+// levenshtein computes the edit distance between two strings.
+func levenshtein(a, b string) int {
+	la, lb := len(a), len(b)
+	if la == 0 {
+		return lb
+	}
+	if lb == 0 {
+		return la
+	}
+
+	// Use single-row optimization: only need previous row + current row
+	prev := make([]int, lb+1)
+	for j := range prev {
+		prev[j] = j
+	}
+
+	for i := 1; i <= la; i++ {
+		curr := make([]int, lb+1)
+		curr[0] = i
+		for j := 1; j <= lb; j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			curr[j] = min(
+				prev[j]+1,      // deletion
+				curr[j-1]+1,    // insertion
+				prev[j-1]+cost, // substitution
+			)
+		}
+		prev = curr
+	}
+	return prev[lb]
 }
 
 // runInteractiveDashboard shows a dashboard and action picker when clade is run with no args

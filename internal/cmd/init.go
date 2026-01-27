@@ -105,7 +105,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	ui.Success("Clade initialized!")
 	ui.Detail("Claude Code: SessionStart hook calls clade inject-context")
-	ui.Detail("Cursor: sessionStart hook calls clade inject-context --json")
+	ui.Detail("Cursor: sessionStart hook calls clade inject-context (format auto-detected)")
 	ui.Detail("Use /drop to save session context before stopping")
 
 	return nil
@@ -137,7 +137,7 @@ func writeCursorHooksJSON(path string) error {
   "hooks": {
     "sessionStart": [
       {
-        "command": "clade inject-context --json"
+        "command": "clade inject-context"
       }
     ]
   }

@@ -213,6 +213,18 @@ func initScratchConfig(scratchPath string) error {
 		}
 	}
 
+	// Cursor hooks
+	cursorDir := filepath.Join(scratchPath, ".cursor")
+	if err := os.MkdirAll(cursorDir, 0755); err != nil {
+		return err
+	}
+	cursorHooksPath := filepath.Join(cursorDir, "hooks.json")
+	if _, err := os.Stat(cursorHooksPath); os.IsNotExist(err) {
+		if err := writeCursorHooksJSON(cursorHooksPath); err != nil {
+			return err
+		}
+	}
+
 	// Note: No .gitignore update for scratches (they're not git repos)
 	return nil
 }
