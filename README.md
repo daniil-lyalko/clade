@@ -188,7 +188,7 @@ When you run `clade init`, it creates hook configurations for both Claude Code a
   "version": 1,
   "hooks": {
     "sessionStart": [{
-      "command": "clade inject-context --json"
+      "command": "clade inject-context"
     }]
   }
 }

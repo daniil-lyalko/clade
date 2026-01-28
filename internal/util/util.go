@@ -42,10 +42,22 @@ func WriteJSON(path string, data interface{}) error {
 }
 
 // CopyDir recursively copies a directory from src to dst
+// Symlinks are skipped for security (prevents symlink attacks)
 func CopyDir(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
+		}
+
+		// Security: Skip symlinks to prevent symlink attacks
+		// Use Lstat to detect symlinks (info from Walk follows symlinks on some platforms)
+		linfo, lerr := os.Lstat(path)
+		if lerr != nil {
+			return lerr
+		}
+		if linfo.Mode()&os.ModeSymlink != 0 {
+			// Silently skip symlinks
+			return nil
 		}
 
 		relPath, err := filepath.Rel(src, path)

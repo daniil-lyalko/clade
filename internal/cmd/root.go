@@ -18,6 +18,7 @@ var Version = "dev"
 
 var experimentalFlag bool
 var versionFlag bool
+var verboseFlag bool
 
 var rootCmd = &cobra.Command{
 	Use:   "clade [name]",
@@ -38,7 +39,11 @@ Shortcut:
   clade <name>                    # Same as: clade work <name>`,
 	Args:                  cobra.ArbitraryArgs,
 	DisableFlagsInUseLine: true,
-	RunE:                  runRoot,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Wire up verbose flag to ui package
+		ui.Verbose = verboseFlag
+	},
+	RunE: runRoot,
 }
 
 // IsExperimentalEnabled returns true if --experimental flag is set
@@ -54,6 +59,9 @@ func Execute() error {
 func init() {
 	// Global experimental flag for hidden features
 	rootCmd.PersistentFlags().BoolVar(&experimentalFlag, "experimental", false, "Enable experimental features (project command)")
+
+	// Verbose flag for debug output
+	rootCmd.PersistentFlags().BoolVarP(&verboseFlag, "verbose", "V", false, "Enable verbose debug output")
 
 	// Version flag
 	rootCmd.Flags().BoolVarP(&versionFlag, "version", "v", false, "Print version and exit")

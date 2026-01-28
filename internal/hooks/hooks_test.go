@@ -268,6 +268,10 @@ func TestRunHooks_RepoSpecificHooks(t *testing.T) {
 	os.Setenv("HOME", homeDir)
 	defer os.Setenv("HOME", originalHome)
 
+	// Trust repo hooks for testing
+	os.Setenv("CLADE_TRUST_REPO_HOOKS", "1")
+	defer os.Unsetenv("CLADE_TRUST_REPO_HOOKS")
+
 	globalHooks := filepath.Join(configDir, "hooks.yaml")
 	globalContent := `hooks:
   on_create:

@@ -27,6 +27,7 @@ type WorktreeOptions struct {
 	RepoFlag     string // -r, --repo
 	PickFlag     bool   // -p, --pick
 	BranchFlag   string // -b, --branch
+	FromFlag     string // -f, --from (base branch)
 	EditorFlag   string // -o, --open
 	AgentFlag    string // -a, --agent
 	NoAgentFlag  bool   // --no-agent
@@ -151,9 +152,11 @@ func CreateWorktree(name string, wtCfg WorktreeConfig, opts WorktreeOptions) err
 
 	// Create worktree with new branch
 	ui.Info("Creating worktree...")
-	if err := git.CreateWorktreeNew(repoPath, wtPath, branch); err != nil {
+	baseBranch, err := git.CreateWorktreeNew(repoPath, wtPath, branch, opts.FromFlag)
+	if err != nil {
 		return fmt.Errorf("failed to create worktree: %w", err)
 	}
+	ui.Detail("Based on: %s", baseBranch)
 
 	// Copy .claude/ directory if it exists in source repo
 	sourceClaudeDir := filepath.Join(repoPath, ".claude")

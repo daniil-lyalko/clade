@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/daniil-lyalko/clade/internal/config"
 	"gopkg.in/yaml.v3"
 )
 
@@ -122,8 +123,19 @@ func RunHooks(event Event, env *Env) []Result {
 
 	// Load repo-specific hooks (run after global hooks)
 	if env.RepoPath != "" {
-		repoConfig, err := loadHooksConfig(repoHooksPath(env.RepoPath))
-		if err == nil {
+		repoHooksFile := repoHooksPath(env.RepoPath)
+		repoConfig, err := loadHooksConfig(repoHooksFile)
+		if err == nil && len(repoConfig.Hooks[event]) > 0 {
+			// Security: Ensure repo hooks are trusted before running
+			if err := config.EnsureRepoHooksTrusted(env.RepoPath); err != nil {
+				// User declined or error - add error result and skip repo hooks
+				results = append(results, Result{
+					Command: "(repo hooks)",
+					Error:   err,
+				})
+				return results
+			}
+
 			for _, cmd := range repoConfig.Hooks[event] {
 				// Commands starting with "!" skip global hooks (handled above)
 				// TrimPrefix handles the check internally, no need for if statement

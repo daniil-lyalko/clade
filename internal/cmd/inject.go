@@ -143,5 +143,6 @@ func wasRecentlyInjected(dir string) bool {
 
 // markInjected creates/touches the dedup marker file for this directory.
 func markInjected(dir string) {
-	os.WriteFile(dedupPath(dir), []byte("1"), 0644)
+	// Security: Use restrictive permissions (owner-only)
+	os.WriteFile(dedupPath(dir), []byte("1"), 0600)
 }

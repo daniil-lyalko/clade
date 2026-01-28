@@ -148,8 +148,8 @@ func printBasicStatus(repoRoot string) {
 
 	// Suggestion
 	fmt.Println()
-	ui.Info("This is a regular git repo, not a clade experiment")
-	ui.Detail("Create an experiment: clade exp <name>")
+	ui.Info("This is a regular git repo, not a clade worktree")
+	ui.Detail("Create a worktree: clade <name>")
 	ui.Detail("Or initialize hooks: clade init")
 }
 
