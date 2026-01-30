@@ -116,7 +116,12 @@ func runResume(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Not tracked - try to adopt orphaned branch
+	// Not tracked - first check if there's an untracked worktree with this name
+	if found := tryAdoptUntrackedWorktree(cfg, state, name, opts); found {
+		return nil
+	}
+
+	// Fallback: try to adopt orphaned branch (requires --branch flag)
 	return adoptOrphanedBranch(cfg, state, name)
 }
 
@@ -146,7 +151,7 @@ func resumeInteractive(cfg *config.Config, state *config.State) error {
 	for repoName, worktrees := range state.Worktrees {
 		for _, wt := range worktrees {
 			age := formatAge(wt.LastUsed)
-			wtPath := config.WorktreePath(cfg, repoName, wt.Name)
+			wtPath := config.GetWorktreePath(cfg, repoName, wt)
 			items = append(items, pickItem{
 				Name:     wt.Name,
 				Path:     wtPath,
@@ -354,6 +359,173 @@ func resumeTrackedProject(cfg *config.Config, state *config.State, proj *config.
 	}
 
 	return launchProjectSessionWithAgent(cfg, proj, workEditorFlag, workAgentFlag, workNoAgentFlag, workNoEditorFlag)
+}
+
+// tryAdoptUntrackedWorktree scans registered repos for an untracked worktree matching the name
+// Returns true if a worktree was found and adopted (or user declined)
+func tryAdoptUntrackedWorktree(cfg *config.Config, state *config.State, name string, opts WorktreeOptions) bool {
+	type match struct {
+		RepoName string
+		RepoPath string
+		Worktree git.WorktreeInfo
+	}
+
+	var matches []match
+
+	// Scan all registered repos
+	for repoName, repoPath := range cfg.Repos {
+		expandedPath := config.ExpandPath(repoPath)
+		worktrees, err := git.ListWorktreesDetailed(expandedPath)
+		if err != nil {
+			continue
+		}
+
+		// Check if this worktree is already tracked
+		trackedSet := make(map[string]bool)
+		if state.Worktrees[repoName] != nil {
+			for _, wt := range state.Worktrees[repoName] {
+				wtPath := config.GetWorktreePath(cfg, repoName, wt)
+				trackedSet[wtPath] = true
+			}
+		}
+
+		for _, gwt := range worktrees {
+			if gwt.IsMain {
+				continue
+			}
+			if trackedSet[gwt.Path] {
+				continue
+			}
+
+			folderName := filepath.Base(gwt.Path)
+			// Match by folder name or branch name
+			if folderName == name || gwt.Branch == name {
+				matches = append(matches, match{
+					RepoName: repoName,
+					RepoPath: expandedPath,
+					Worktree: gwt,
+				})
+			}
+		}
+	}
+
+	if len(matches) == 0 {
+		return false
+	}
+
+	// If multiple matches, let user pick or require -r flag
+	var selected match
+	if len(matches) == 1 {
+		selected = matches[0]
+	} else {
+		// Multiple matches - check if -r flag narrows it down
+		if resumeRepoFlag != "" {
+			for _, m := range matches {
+				if m.RepoName == resumeRepoFlag || filepath.Base(m.RepoPath) == resumeRepoFlag {
+					selected = m
+					break
+				}
+			}
+			if selected.RepoName == "" {
+				ui.Error("Multiple worktrees named '%s' found, but none in repo '%s'", name, resumeRepoFlag)
+				for _, m := range matches {
+					ui.Detail("  %s: %s", m.RepoName, m.Worktree.Path)
+				}
+				return true // Handled, but unsuccessfully
+			}
+		} else {
+			ui.Error("Multiple worktrees named '%s' found:", name)
+			for _, m := range matches {
+				ui.Detail("  %s: %s", m.RepoName, m.Worktree.Path)
+			}
+			ui.Detail("")
+			ui.Detail("Specify repo: clade resume %s -r <repo>", name)
+			return true // Handled, but unsuccessfully
+		}
+	}
+
+	// Found an untracked worktree - prompt for adoption
+	folderName := filepath.Base(selected.Worktree.Path)
+	ui.Info("Found untracked worktree: %s", selected.Worktree.Path)
+	ui.Detail("Branch: %s", selected.Worktree.Branch)
+	ui.Detail("Repo: %s", selected.RepoName)
+
+	prompt := promptui.Prompt{
+		Label:     "Adopt this worktree",
+		IsConfirm: true,
+		Default:   "y",
+	}
+	_, err := prompt.Run()
+	if err != nil {
+		ui.Info("Skipped adoption")
+		return true // User declined, but we handled it
+	}
+
+	// Prompt for hooks injection
+	injectHooks := false
+	claudeDir := filepath.Join(selected.Worktree.Path, ".claude")
+	if _, err := os.Stat(claudeDir); os.IsNotExist(err) {
+		hooksPrompt := promptui.Prompt{
+			Label:     "Initialize .claude/ hooks in worktree",
+			IsConfirm: true,
+			Default:   "y",
+		}
+		_, err := hooksPrompt.Run()
+		injectHooks = err == nil
+	}
+
+	// Add to state
+	label := inferLabelFromBranch(selected.Worktree.Branch)
+	ticket := extractTicket(folderName)
+	if ticket == "" {
+		ticket = extractTicket(selected.Worktree.Branch)
+	}
+
+	wt := &config.Worktree{
+		Name:     folderName,
+		Label:    label,
+		Branch:   selected.Worktree.Branch,
+		Path:     selected.Worktree.Path, // Store actual path
+		Ticket:   ticket,
+		Created:  time.Now(),
+		LastUsed: time.Now(),
+	}
+	state.AddWorktree(selected.RepoName, wt)
+	if err := state.Save(cfg); err != nil {
+		ui.Warn("Failed to save state: %v", err)
+	}
+
+	// Initialize hooks if requested
+	if injectHooks {
+		InitRepo(selected.Worktree.Path)
+	}
+
+	ui.Success("Adopted worktree '%s'", folderName)
+	ui.KeyValue("Path", selected.Worktree.Path)
+
+	// Run on_resume hooks
+	if hooks.HasHooks(hooks.OnResume, selected.RepoPath) {
+		ui.Info("Running on_resume hooks...")
+		hookEnv := &hooks.Env{
+			Type:     "worktree",
+			Name:     folderName,
+			Path:     selected.Worktree.Path,
+			RepoName: selected.RepoName,
+			RepoPath: selected.RepoPath,
+			Branch:   selected.Worktree.Branch,
+			Ticket:   ticket,
+		}
+		results := hooks.RunHooks(hooks.OnResume, hookEnv)
+		for _, r := range results {
+			if r.Error != nil {
+				ui.Warn("Hook failed: %s - %v", r.Command, r.Error)
+			}
+		}
+	}
+
+	// Launch session
+	launchWorktreeSession(cfg, selected.RepoPath, selected.Worktree.Path, opts)
+	return true
 }
 
 func adoptOrphanedBranch(cfg *config.Config, state *config.State, name string) error {

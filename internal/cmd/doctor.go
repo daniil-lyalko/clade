@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,6 +11,11 @@ import (
 	"github.com/daniil-lyalko/clade/internal/git"
 	"github.com/daniil-lyalko/clade/internal/ui"
 	"github.com/spf13/cobra"
+)
+
+var (
+	doctorFixFlag  bool
+	doctorJSONFlag bool
 )
 
 var doctorCmd = &cobra.Command{
@@ -24,12 +30,17 @@ Checks performed:
   - Git is available
   - Configured agent is available
   - Registered repos exist and are git repos
-  - Trust registry is readable`,
+  - Trust registry is readable
+
+Use --fix to attempt automatic fixes for issues that can be repaired.
+Use --json for machine-readable output.`,
 	RunE: runDoctor,
 }
 
 func init() {
 	rootCmd.AddCommand(doctorCmd)
+	doctorCmd.Flags().BoolVar(&doctorFixFlag, "fix", false, "Attempt to fix issues automatically")
+	doctorCmd.Flags().BoolVar(&doctorJSONFlag, "json", false, "Output as JSON")
 }
 
 // checkResult represents a single diagnostic check result
@@ -38,15 +49,28 @@ type checkResult struct {
 	ok      bool
 	warning bool // true if it's a warning, false if it's a failure
 	message string
+	fixFunc func() error // function to fix the issue, nil if not fixable
+}
+
+// DoctorCheckJSON is the JSON output structure for a single check
+type DoctorCheckJSON struct {
+	Name    string `json:"name"`
+	Status  string `json:"status"` // "ok", "warning", "failure"
+	Message string `json:"message,omitempty"`
+	Fixable bool   `json:"fixable"`
+}
+
+// DoctorOutputJSON is the JSON output structure for doctor command
+type DoctorOutputJSON struct {
+	Passed   int               `json:"passed"`
+	Warnings int               `json:"warnings"`
+	Failures int               `json:"failures"`
+	Checks   []DoctorCheckJSON `json:"checks"`
 }
 
 func runDoctor(cmd *cobra.Command, args []string) error {
-	fmt.Println()
-	fmt.Println(ui.Bold("Clade Doctor"))
-	fmt.Println()
-
 	var results []checkResult
-	var warnings, failures int
+	var warnings, failures, passed int
 
 	// Check config file
 	results = append(results, checkConfig())
@@ -69,6 +93,59 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	// Check trust registry
 	results = append(results, checkTrustRegistry())
 
+	// Count results
+	for _, r := range results {
+		if r.ok {
+			passed++
+		} else if r.warning {
+			warnings++
+		} else {
+			failures++
+		}
+	}
+
+	// JSON output
+	if doctorJSONFlag {
+		output := DoctorOutputJSON{
+			Passed:   passed,
+			Warnings: warnings,
+			Failures: failures,
+			Checks:   make([]DoctorCheckJSON, 0, len(results)),
+		}
+
+		for _, r := range results {
+			status := "ok"
+			if !r.ok && r.warning {
+				status = "warning"
+			} else if !r.ok {
+				status = "failure"
+			}
+
+			output.Checks = append(output.Checks, DoctorCheckJSON{
+				Name:    r.name,
+				Status:  status,
+				Message: r.message,
+				Fixable: r.fixFunc != nil,
+			})
+		}
+
+		data, err := json.MarshalIndent(output, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(data))
+
+		if failures > 0 {
+			return fmt.Errorf("doctor found issues")
+		}
+		return nil
+	}
+
+	// Human-readable output
+	fmt.Println()
+	fmt.Println(ui.Bold("Clade Doctor"))
+	fmt.Println()
+
 	// Print results
 	for _, r := range results {
 		if r.ok {
@@ -77,14 +154,16 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 				fmt.Printf("    %s\n", ui.Dim(r.message))
 			}
 		} else if r.warning {
-			warnings++
 			fmt.Printf("  %s %s\n", ui.Yellow("⚠"), r.name)
 			if r.message != "" {
 				fmt.Printf("    %s\n", ui.Dim(r.message))
 			}
 		} else {
-			failures++
-			fmt.Printf("  %s %s\n", ui.Red("✗"), r.name)
+			marker := ui.Red("✗")
+			if r.fixFunc != nil {
+				marker = ui.Red("✗") + ui.Dim(" (fixable)")
+			}
+			fmt.Printf("  %s %s\n", marker, r.name)
 			if r.message != "" {
 				fmt.Printf("    %s\n", ui.Dim(r.message))
 			}
@@ -93,9 +172,37 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 
 	fmt.Println()
 
+	// Attempt fixes if --fix flag is set
+	if doctorFixFlag {
+		var fixable []checkResult
+		for _, r := range results {
+			if !r.ok && r.fixFunc != nil {
+				fixable = append(fixable, r)
+			}
+		}
+
+		if len(fixable) > 0 {
+			fmt.Println(ui.Bold("Attempting fixes..."))
+			fmt.Println()
+
+			for _, r := range fixable {
+				if err := r.fixFunc(); err != nil {
+					ui.Error("Could not fix %s: %v", r.name, err)
+				} else {
+					ui.Success("Fixed: %s", r.name)
+					failures-- // Decrement failure count for fixed issues
+				}
+			}
+			fmt.Println()
+		}
+	}
+
 	// Summary
 	if failures > 0 {
 		ui.Error("%d check(s) failed", failures)
+		if !doctorFixFlag {
+			ui.Info("Run 'clade doctor --fix' to attempt automatic fixes")
+		}
 		return fmt.Errorf("doctor found issues")
 	} else if warnings > 0 {
 		ui.Warn("All checks passed with %d warning(s)", warnings)
@@ -113,6 +220,19 @@ func checkConfig() checkResult {
 			name:    "Config file",
 			ok:      false,
 			message: fmt.Sprintf("Failed to determine path: %v", err),
+		}
+	}
+
+	// Check if config file exists
+	if _, statErr := os.Stat(configPath); os.IsNotExist(statErr) {
+		return checkResult{
+			name:    "Config file",
+			ok:      false,
+			message: fmt.Sprintf("File not found: %s", configPath),
+			fixFunc: func() error {
+				cfg := config.DefaultConfig()
+				return cfg.Save()
+			},
 		}
 	}
 
@@ -156,6 +276,21 @@ func checkState() checkResult {
 		}
 	}
 
+	statePath := config.StatePath(cfg)
+
+	// Check if state file exists
+	if _, statErr := os.Stat(statePath); os.IsNotExist(statErr) {
+		return checkResult{
+			name:    "State file",
+			ok:      false,
+			message: fmt.Sprintf("File not found: %s", statePath),
+			fixFunc: func() error {
+				state := config.NewState()
+				return state.Save(cfg)
+			},
+		}
+	}
+
 	state, err := config.LoadState(cfg)
 	if err != nil {
 		return checkResult{
@@ -196,11 +331,16 @@ func checkBaseDir() checkResult {
 	// Check if it exists
 	info, err := os.Stat(baseDir)
 	if os.IsNotExist(err) {
+		// This is OK - it will be created on first use
+		// But we can offer to create it now with --fix
 		return checkResult{
 			name:    "Base directory",
 			ok:      true,
 			warning: false,
 			message: fmt.Sprintf("%s (will be created on first use)", baseDir),
+			fixFunc: func() error {
+				return os.MkdirAll(baseDir, 0755)
+			},
 		}
 	}
 	if err != nil {
@@ -356,21 +496,31 @@ func checkTrustRegistry() checkResult {
 		}
 	}
 
+	// Check if file exists first
+	if _, statErr := os.Stat(registryPath); os.IsNotExist(statErr) {
+		return checkResult{
+			name:    "Trust registry",
+			ok:      true,
+			message: "not yet created (no repos trusted)",
+			fixFunc: func() error {
+				// Create empty trust registry
+				registry := &config.TrustRegistry{Repos: make(map[string]config.TrustEntry)}
+				return registry.Save()
+			},
+		}
+	}
+
 	registry, err := config.LoadTrustRegistry()
 	if err != nil {
 		return checkResult{
 			name:    "Trust registry",
 			ok:      false,
 			message: fmt.Sprintf("Failed to load: %v", err),
-		}
-	}
-
-	// Check if file exists
-	if _, err := os.Stat(registryPath); os.IsNotExist(err) {
-		return checkResult{
-			name:    "Trust registry",
-			ok:      true,
-			message: "not yet created (no repos trusted)",
+			fixFunc: func() error {
+				// Create fresh trust registry to replace corrupted one
+				registry := &config.TrustRegistry{Repos: make(map[string]config.TrustEntry)}
+				return registry.Save()
+			},
 		}
 	}
 

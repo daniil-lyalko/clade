@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -12,6 +13,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var listJSONFlag bool
+
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Show all active worktrees, projects, and scratches",
@@ -20,6 +23,43 @@ var listCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(listCmd)
+	listCmd.Flags().BoolVar(&listJSONFlag, "json", false, "Output as JSON")
+}
+
+// ListWorktreeJSON is the JSON output structure for a worktree
+type ListWorktreeJSON struct {
+	Name     string `json:"name"`
+	Label    string `json:"label,omitempty"`
+	Branch   string `json:"branch"`
+	Path     string `json:"path"`
+	Status   string `json:"status"` // "tracked", "untracked", "orphaned"
+	Stale    bool   `json:"stale,omitempty"`
+	LastUsed string `json:"last_used,omitempty"`
+}
+
+// ListProjectJSON is the JSON output structure for a project
+type ListProjectJSON struct {
+	Name     string   `json:"name"`
+	Branch   string   `json:"branch"`
+	Path     string   `json:"path"`
+	Repos    []string `json:"repos"`
+	LastUsed string   `json:"last_used"`
+}
+
+// ListScratchJSON is the JSON output structure for a scratch
+type ListScratchJSON struct {
+	Name     string `json:"name"`
+	Path     string `json:"path"`
+	Ticket   string `json:"ticket,omitempty"`
+	Stale    bool   `json:"stale,omitempty"`
+	LastUsed string `json:"last_used"`
+}
+
+// ListOutputJSON is the JSON output structure for list command
+type ListOutputJSON struct {
+	Worktrees map[string][]ListWorktreeJSON `json:"worktrees"`
+	Projects  []ListProjectJSON             `json:"projects,omitempty"`
+	Scratches []ListScratchJSON             `json:"scratches,omitempty"`
 }
 
 func runList(cmd *cobra.Command, args []string) error {
@@ -33,12 +73,16 @@ func runList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load state: %w", err)
 	}
 
+	// JSON output
+	if listJSONFlag {
+		return runListJSON(cfg, state)
+	}
+
 	hasContent := false
 
-	// List v2 worktrees (grouped by repo)
-	if len(state.Worktrees) > 0 {
+	// List worktrees (grouped by repo) - includes both tracked and untracked
+	if hasWorktrees := printAllWorktrees(cfg, state); hasWorktrees {
 		hasContent = true
-		printWorktreesGrouped(cfg, state)
 	}
 
 	// List v1 experiments (legacy format)
@@ -81,46 +125,334 @@ func runList(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// printWorktreesGrouped prints worktrees grouped by repo in a compact format
-func printWorktreesGrouped(cfg *config.Config, state *config.State) {
+// runListJSON outputs list data as JSON
+func runListJSON(cfg *config.Config, state *config.State) error {
+	output := ListOutputJSON{
+		Worktrees: make(map[string][]ListWorktreeJSON),
+	}
+
+	// Collect all repos
+	repoSet := make(map[string]string) // name -> path
+	for name, path := range cfg.Repos {
+		repoSet[name] = config.ExpandPath(path)
+	}
+
+	// Process each repo
+	for repoName, repoPath := range repoSet {
+		gitWorktrees, err := git.ListWorktreesDetailed(repoPath)
+		if err != nil {
+			continue
+		}
+
+		trackedWorktrees := state.Worktrees[repoName]
+		if trackedWorktrees == nil {
+			trackedWorktrees = make(map[string]*config.Worktree)
+		}
+
+		seenTracked := make(map[string]bool)
+		var repoWorktrees []ListWorktreeJSON
+
+		// Git worktrees
+		for _, gwt := range gitWorktrees {
+			if gwt.IsMain {
+				continue
+			}
+
+			var matched *config.Worktree
+			var matchedName string
+			for name, wt := range trackedWorktrees {
+				wtPath := config.GetWorktreePath(cfg, repoName, wt)
+				if wtPath == gwt.Path {
+					matched = wt
+					matchedName = name
+					seenTracked[name] = true
+					break
+				}
+			}
+
+			if matched != nil {
+				stale := time.Since(matched.LastUsed) > 7*24*time.Hour
+				repoWorktrees = append(repoWorktrees, ListWorktreeJSON{
+					Name:     matchedName,
+					Label:    matched.Label,
+					Branch:   matched.Branch,
+					Path:     gwt.Path,
+					Status:   "tracked",
+					Stale:    stale,
+					LastUsed: matched.LastUsed.Format(time.RFC3339),
+				})
+			} else {
+				folderName := filepath.Base(gwt.Path)
+				repoWorktrees = append(repoWorktrees, ListWorktreeJSON{
+					Name:   folderName,
+					Branch: gwt.Branch,
+					Path:   gwt.Path,
+					Status: "untracked",
+				})
+			}
+		}
+
+		// Orphaned worktrees
+		for name, wt := range trackedWorktrees {
+			if seenTracked[name] {
+				continue
+			}
+			wtPath := config.GetWorktreePath(cfg, repoName, wt)
+			repoWorktrees = append(repoWorktrees, ListWorktreeJSON{
+				Name:     name,
+				Label:    wt.Label,
+				Branch:   wt.Branch,
+				Path:     wtPath,
+				Status:   "orphaned",
+				LastUsed: wt.LastUsed.Format(time.RFC3339),
+			})
+		}
+
+		if len(repoWorktrees) > 0 {
+			output.Worktrees[repoName] = repoWorktrees
+		}
+	}
+
+	// Projects
+	for _, proj := range state.Projects {
+		var repoNames []string
+		for _, r := range proj.Repos {
+			repoNames = append(repoNames, r.Name)
+		}
+		output.Projects = append(output.Projects, ListProjectJSON{
+			Name:     proj.Name,
+			Branch:   proj.Branch,
+			Path:     proj.Path,
+			Repos:    repoNames,
+			LastUsed: proj.LastUsed.Format(time.RFC3339),
+		})
+	}
+
+	// Scratches
+	for _, scratch := range state.Scratches {
+		stale := time.Since(scratch.LastUsed) > 7*24*time.Hour
+		output.Scratches = append(output.Scratches, ListScratchJSON{
+			Name:     scratch.Name,
+			Path:     scratch.Path,
+			Ticket:   scratch.Ticket,
+			Stale:    stale,
+			LastUsed: scratch.LastUsed.Format(time.RFC3339),
+		})
+	}
+
+	data, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(data))
+	return nil
+}
+
+// UntrackedWorktree represents a git worktree not tracked by clade
+type UntrackedWorktree struct {
+	Path   string
+	Branch string
+}
+
+// printAllWorktrees prints all worktrees (tracked + untracked) grouped by repo
+func printAllWorktrees(cfg *config.Config, state *config.State) bool {
+	// Collect all repos: registered + any with tracked worktrees
+	repoSet := make(map[string]string) // name -> path
+
+	// Add registered repos
+	for name, path := range cfg.Repos {
+		repoSet[name] = config.ExpandPath(path)
+	}
+
+	// Add repos from state that might not be registered anymore
+	for repoName := range state.Worktrees {
+		if _, ok := repoSet[repoName]; !ok {
+			// Try to find the path from existing worktrees
+			for _, wt := range state.Worktrees[repoName] {
+				if wt.Path != "" {
+					// Can't easily get repo path from worktree path
+					// Just skip - user should re-register
+					break
+				}
+			}
+		}
+	}
+
+	if len(repoSet) == 0 && len(state.Worktrees) == 0 {
+		return false
+	}
+
 	// Sort repo names
 	var repoNames []string
-	for repoName := range state.Worktrees {
-		repoNames = append(repoNames, repoName)
+	for name := range repoSet {
+		repoNames = append(repoNames, name)
 	}
 	sort.Strings(repoNames)
 
+	hasAny := false
+
 	for _, repoName := range repoNames {
-		worktrees := state.Worktrees[repoName]
-		count := len(worktrees)
+		repoPath := repoSet[repoName]
+
+		// Get actual git worktrees
+		gitWorktrees, err := git.ListWorktreesDetailed(repoPath)
+		if err != nil {
+			// Can't query this repo, skip
+			continue
+		}
+
+		// Get tracked worktrees from state
+		trackedWorktrees := state.Worktrees[repoName]
+		if trackedWorktrees == nil {
+			trackedWorktrees = make(map[string]*config.Worktree)
+		}
+
+		// Build list of worktrees to display
+		type displayWorktree struct {
+			Name      string
+			Tracked   *config.Worktree
+			Untracked *UntrackedWorktree
+			Path      string
+			Orphaned  bool // tracked but git worktree gone
+		}
+
+		var toDisplay []displayWorktree
+		seenTracked := make(map[string]bool)
+
+		// First, check git worktrees
+		for _, gwt := range gitWorktrees {
+			if gwt.IsMain {
+				continue // Skip main repo
+			}
+
+			// Try to match with tracked worktree
+			var matched *config.Worktree
+			var matchedName string
+			for name, wt := range trackedWorktrees {
+				wtPath := config.GetWorktreePath(cfg, repoName, wt)
+				if wtPath == gwt.Path {
+					matched = wt
+					matchedName = name
+					seenTracked[name] = true
+					break
+				}
+			}
+
+			if matched != nil {
+				toDisplay = append(toDisplay, displayWorktree{
+					Name:    matchedName,
+					Tracked: matched,
+					Path:    gwt.Path,
+				})
+			} else {
+				// Untracked - use folder name as display name
+				folderName := filepath.Base(gwt.Path)
+				toDisplay = append(toDisplay, displayWorktree{
+					Name: folderName,
+					Untracked: &UntrackedWorktree{
+						Path:   gwt.Path,
+						Branch: gwt.Branch,
+					},
+					Path: gwt.Path,
+				})
+			}
+		}
+
+		// Check for orphaned tracked worktrees (in state but not in git)
+		for name, wt := range trackedWorktrees {
+			if seenTracked[name] {
+				continue
+			}
+			wtPath := config.GetWorktreePath(cfg, repoName, wt)
+			toDisplay = append(toDisplay, displayWorktree{
+				Name:     name,
+				Tracked:  wt,
+				Path:     wtPath,
+				Orphaned: true,
+			})
+		}
+
+		if len(toDisplay) == 0 {
+			continue
+		}
+
+		hasAny = true
 
 		// Print repo header
-		fmt.Printf("%s (%d worktree", ui.Cyan(repoName), count)
-		if count != 1 {
+		fmt.Printf("%s (%d worktree", ui.Cyan(repoName), len(toDisplay))
+		if len(toDisplay) != 1 {
 			fmt.Print("s")
 		}
 		fmt.Println(")")
 
-		// Sort worktrees by last used (most recent first)
-		var wtList []*config.Worktree
-		for _, wt := range worktrees {
-			wtList = append(wtList, wt)
-		}
-		sort.Slice(wtList, func(i, j int) bool {
-			return wtList[i].LastUsed.After(wtList[j].LastUsed)
+		// Sort: tracked by last_used, then untracked alphabetically
+		sort.Slice(toDisplay, func(i, j int) bool {
+			// Tracked first
+			if toDisplay[i].Tracked != nil && toDisplay[j].Tracked == nil {
+				return true
+			}
+			if toDisplay[i].Tracked == nil && toDisplay[j].Tracked != nil {
+				return false
+			}
+			// Both tracked: by last used
+			if toDisplay[i].Tracked != nil && toDisplay[j].Tracked != nil {
+				return toDisplay[i].Tracked.LastUsed.After(toDisplay[j].Tracked.LastUsed)
+			}
+			// Both untracked: alphabetically
+			return toDisplay[i].Name < toDisplay[j].Name
 		})
 
-		// Print each worktree in compact format
-		for _, wt := range wtList {
+		// Print each worktree
+		for _, dw := range toDisplay {
+			if dw.Orphaned {
+				// Tracked but git worktree is gone
+				fmt.Printf("  %-16s %-12s %s\n",
+					dw.Name,
+					ui.Dim(dw.Tracked.Label),
+					ui.Red("(orphaned)"),
+				)
+			} else if dw.Tracked != nil {
+				printWorktreeCompact(cfg, repoName, dw.Tracked)
+			} else {
+				// Untracked
+				fmt.Printf("  %-16s %-12s %s\n",
+					dw.Name,
+					ui.Dim("(untracked)"),
+					ui.Dim(dw.Untracked.Branch),
+				)
+			}
+		}
+		fmt.Println()
+	}
+
+	// Also print tracked worktrees from repos not in repoSet (legacy/missing repos)
+	for repoName, worktrees := range state.Worktrees {
+		if _, inSet := repoSet[repoName]; inSet {
+			continue // Already handled above
+		}
+		if len(worktrees) == 0 {
+			continue
+		}
+
+		hasAny = true
+		fmt.Printf("%s %s (%d worktree", ui.Cyan(repoName), ui.Yellow("(unregistered repo)"), len(worktrees))
+		if len(worktrees) != 1 {
+			fmt.Print("s")
+		}
+		fmt.Println(")")
+
+		for _, wt := range worktrees {
 			printWorktreeCompact(cfg, repoName, wt)
 		}
 		fmt.Println()
 	}
+
+	return hasAny
 }
 
 // printWorktreeCompact prints a worktree in compact single-line format
 func printWorktreeCompact(cfg *config.Config, repoName string, wt *config.Worktree) {
-	wtPath := config.WorktreePath(cfg, repoName, wt.Name)
+	wtPath := config.GetWorktreePath(cfg, repoName, wt)
 	age := formatAgeShort(wt.LastUsed)
 
 	// Check if stale (older than 7 days)

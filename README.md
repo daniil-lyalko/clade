@@ -1,3 +1,6 @@
+[![CI](https://github.com/daniil-lyalko/clade/actions/workflows/ci.yml/badge.svg)](https://github.com/daniil-lyalko/clade/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 # Clade
 
 A CLI that manages git worktrees and context for AI coding sessions.

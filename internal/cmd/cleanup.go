@@ -150,7 +150,7 @@ func runCleanup(cmd *cobra.Command, args []string) error {
 }
 
 func cleanupWorktree(cfg *config.Config, state *config.State, repoName string, wt *config.Worktree) error {
-	wtPath := config.WorktreePath(cfg, repoName, wt.Name)
+	wtPath := config.GetWorktreePath(cfg, repoName, wt)
 
 	// Dry-run mode: just show what would be deleted
 	if cleanupDryRunFlag {

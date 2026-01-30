@@ -32,6 +32,7 @@ type WorktreeOptions struct {
 	AgentFlag    string // -a, --agent
 	NoAgentFlag  bool   // --no-agent
 	NoEditorFlag bool   // --no-editor
+	DryRunFlag   bool   // --dry-run
 }
 
 // CreateWorktree creates a new worktree with the given configuration
@@ -127,6 +128,11 @@ func CreateWorktree(name string, wtCfg WorktreeConfig, opts WorktreeOptions) err
 
 	// v2 path: ~/clade/repos/{repoName}/{name}/
 	wtPath := config.WorktreePath(cfg, repoName, name)
+
+	// Dry-run mode: show what would be created and exit
+	if opts.DryRunFlag {
+		return printDryRun(cfg, repoPath, repoName, name, branch, wtPath, wtCfg, opts)
+	}
 
 	// Create output
 	ui.Header("Creating %s: %s", wtCfg.Label, name)
@@ -289,7 +295,7 @@ func launchWorktreeSession(cfg *config.Config, repoPath, wtPath string, opts Wor
 
 // ResumeWorktree resumes an existing worktree
 func ResumeWorktree(cfg *config.Config, state *config.State, repoName string, wt *config.Worktree, repoPath string, opts WorktreeOptions) error {
-	wtPath := config.WorktreePath(cfg, repoName, wt.Name)
+	wtPath := config.GetWorktreePath(cfg, repoName, wt)
 
 	// Verify path exists
 	if _, err := os.Stat(wtPath); os.IsNotExist(err) {
@@ -387,4 +393,57 @@ func init() {
 
 		return nil
 	})
+}
+
+// printDryRun shows what would be created without making changes
+func printDryRun(cfg *config.Config, repoPath, repoName, name, branch, wtPath string, wtCfg WorktreeConfig, opts WorktreeOptions) error {
+	fmt.Println()
+	fmt.Println(ui.Bold("Dry run - no changes will be made"))
+	fmt.Println()
+
+	ui.KeyValue("Repository", fmt.Sprintf("%s (%s)", repoName, repoPath))
+	ui.KeyValue("Worktree path", wtPath)
+	ui.KeyValue("Branch", branch)
+	ui.KeyValue("Label", wtCfg.Label)
+
+	// Check what files would be copied
+	patterns := make([]string, 0, len(files.DefaultCopyFiles)+len(cfg.CopyFiles))
+	patterns = append(patterns, files.DefaultCopyFiles...)
+	patterns = append(patterns, cfg.CopyFiles...)
+	if repoFiles := cfg.GetRepoCopyFiles(repoPath); len(repoFiles) > 0 {
+		patterns = append(patterns, repoFiles...)
+	}
+	found := files.FindCopyableFiles(repoPath, patterns)
+	if len(found) > 0 {
+		ui.KeyValue("Files to copy", fmt.Sprintf("%v", found))
+	}
+
+	// Check what would be run
+	fmt.Println()
+	fmt.Println(ui.Dim("Would run:"))
+	fmt.Printf("  git worktree add %s -b %s\n", wtPath, branch)
+	if cfg.AutoInit {
+		fmt.Println("  clade init (auto_init enabled)")
+	}
+
+	// Show agent/editor that would launch
+	editor := cfg.Editor
+	if opts.EditorFlag != "" {
+		editor = opts.EditorFlag
+	}
+	agentCmd := cfg.Agent
+	if opts.AgentFlag != "" {
+		agentCmd = opts.AgentFlag
+	}
+
+	if !opts.NoEditorFlag && editor != "" {
+		fmt.Printf("  Open: %s\n", editor)
+	}
+	if !opts.NoAgentFlag && agentCmd != "" {
+		fmt.Printf("  Launch: %s\n", agentCmd)
+	}
+
+	fmt.Println()
+	fmt.Println(ui.Dim("Remove --dry-run to execute"))
+	return nil
 }

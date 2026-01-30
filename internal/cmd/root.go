@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"time"
@@ -79,6 +80,7 @@ func init() {
 	rootCmd.Flags().StringVarP(&workRepoFlag, "repo", "r", "", "Repository path or registered name")
 	rootCmd.Flags().BoolVarP(&workPickFlag, "pick", "p", false, "Force repo picker")
 	rootCmd.Flags().StringVarP(&workBranchFlag, "branch", "b", "", "Custom branch name")
+	rootCmd.Flags().BoolVar(&workDryRunFlag, "dry-run", false, "Preview what would be created without making changes")
 }
 
 // runRoot handles the root command - either delegates to work or shows interactive dashboard
@@ -168,31 +170,18 @@ func runInteractiveDashboard(cmd *cobra.Command, args []string) error {
 	}
 
 	// Show dashboard
-	showDashboard(state)
+	showDashboard(cfg, state)
 
 	// Show action picker
 	return showActionPicker(cfg, state)
 }
 
-func showDashboard(state *config.State) {
+func showDashboard(cfg *config.Config, state *config.State) {
 	hasContent := false
 
-	// Show worktrees grouped by repo (v2 format - most recent first, limit to 5)
-	if len(state.Worktrees) > 0 {
+	// Show worktrees grouped by repo - includes both tracked and untracked
+	if hasWorktrees := showDashboardWorktrees(cfg, state); hasWorktrees {
 		hasContent = true
-		ui.Header("Active worktrees:")
-		worktrees := sortWorktreesByLastUsed(state.Worktrees)
-		shown := 0
-		for _, wt := range worktrees {
-			if shown >= 5 {
-				total := countTotalWorktrees(state.Worktrees)
-				remaining := total - 5
-				ui.Detail("%s", ui.Dim(fmt.Sprintf("  ... and %d more", remaining)))
-				break
-			}
-			printDashboardWorktree(wt)
-			shown++
-		}
 	}
 
 	// Show legacy experiments (most recent first, limit to 3)
@@ -247,62 +236,190 @@ func showDashboard(state *config.State) {
 	fmt.Println()
 }
 
-// worktreeWithRepo holds a worktree and its repo name for sorting
-type worktreeWithRepo struct {
-	RepoName string
-	Worktree *config.Worktree
+// dashboardWorktree holds display info for a worktree in the dashboard
+type dashboardWorktree struct {
+	Name      string
+	RepoName  string
+	Tracked   *config.Worktree // nil if untracked
+	Branch    string           // for untracked
+	Orphaned  bool
 }
 
-func printDashboardWorktree(wt worktreeWithRepo) {
-	age := formatAge(wt.Worktree.LastUsed)
+// showDashboardWorktrees shows all worktrees (tracked + untracked) in the dashboard
+// Returns true if any worktrees were displayed
+func showDashboardWorktrees(cfg *config.Config, state *config.State) bool {
+	// Collect all repos: registered + any with tracked worktrees
+	repoSet := make(map[string]string) // name -> path
 
-	// Check if stale
-	staleMarker := ""
-	if time.Since(wt.Worktree.LastUsed) > 7*24*time.Hour {
-		staleMarker = " " + ui.Yellow("(stale)")
+	// Add registered repos
+	for name, path := range cfg.Repos {
+		repoSet[name] = config.ExpandPath(path)
 	}
 
-	label := wt.Worktree.Label
-	if label == "" || label == "worktree" {
-		label = ""
-	} else {
-		label = "[" + label + "] "
+	// Add repos from state that might not be registered anymore
+	for repoName := range state.Worktrees {
+		if _, ok := repoSet[repoName]; !ok {
+			// Can't easily get repo path - skip unregistered repos in dashboard
+			// They'll show in `clade list` with (unregistered repo) marker
+		}
 	}
 
-	fmt.Printf("  %s %s%s - %s%s\n",
-		ui.Cyan(wt.Worktree.Name),
-		ui.Dim(label),
-		ui.Dim("("+wt.RepoName+")"),
-		ui.Dim(age),
-		staleMarker,
-	)
-}
+	if len(repoSet) == 0 && len(state.Worktrees) == 0 {
+		return false
+	}
 
-func sortWorktreesByLastUsed(worktrees map[string]map[string]*config.Worktree) []worktreeWithRepo {
-	var result []worktreeWithRepo
-	for repoName, repoWorktrees := range worktrees {
-		for _, wt := range repoWorktrees {
-			result = append(result, worktreeWithRepo{
+	// Collect all worktrees to display
+	var allWorktrees []dashboardWorktree
+
+	for repoName, repoPath := range repoSet {
+		// Get actual git worktrees
+		gitWorktrees, err := git.ListWorktreesDetailed(repoPath)
+		if err != nil {
+			// Can't query this repo, skip
+			continue
+		}
+
+		// Get tracked worktrees from state
+		trackedWorktrees := state.Worktrees[repoName]
+		if trackedWorktrees == nil {
+			trackedWorktrees = make(map[string]*config.Worktree)
+		}
+
+		seenTracked := make(map[string]bool)
+
+		// First, check git worktrees
+		for _, gwt := range gitWorktrees {
+			if gwt.IsMain {
+				continue // Skip main repo
+			}
+
+			// Try to match with tracked worktree
+			var matched *config.Worktree
+			var matchedName string
+			for name, wt := range trackedWorktrees {
+				wtPath := config.GetWorktreePath(cfg, repoName, wt)
+				if wtPath == gwt.Path {
+					matched = wt
+					matchedName = name
+					seenTracked[name] = true
+					break
+				}
+			}
+
+			if matched != nil {
+				allWorktrees = append(allWorktrees, dashboardWorktree{
+					Name:     matchedName,
+					RepoName: repoName,
+					Tracked:  matched,
+				})
+			} else {
+				// Untracked - use folder name as display name
+				folderName := filepath.Base(gwt.Path)
+				allWorktrees = append(allWorktrees, dashboardWorktree{
+					Name:     folderName,
+					RepoName: repoName,
+					Tracked:  nil,
+					Branch:   gwt.Branch,
+				})
+			}
+		}
+
+		// Check for orphaned tracked worktrees (in state but not in git)
+		for name, wt := range trackedWorktrees {
+			if seenTracked[name] {
+				continue
+			}
+			allWorktrees = append(allWorktrees, dashboardWorktree{
+				Name:     name,
 				RepoName: repoName,
-				Worktree: wt,
+				Tracked:  wt,
+				Orphaned: true,
 			})
 		}
 	}
 
-	// Sort by last used (descending) - use stdlib instead of bubble sort
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Worktree.LastUsed.After(result[j].Worktree.LastUsed)
+	if len(allWorktrees) == 0 {
+		return false
+	}
+
+	// Sort: tracked by last_used (descending), then untracked alphabetically
+	sort.Slice(allWorktrees, func(i, j int) bool {
+		// Tracked first
+		if allWorktrees[i].Tracked != nil && allWorktrees[j].Tracked == nil {
+			return true
+		}
+		if allWorktrees[i].Tracked == nil && allWorktrees[j].Tracked != nil {
+			return false
+		}
+		// Both tracked: by last used
+		if allWorktrees[i].Tracked != nil && allWorktrees[j].Tracked != nil {
+			return allWorktrees[i].Tracked.LastUsed.After(allWorktrees[j].Tracked.LastUsed)
+		}
+		// Both untracked: alphabetically
+		return allWorktrees[i].Name < allWorktrees[j].Name
 	})
 
-	return result
+	ui.Header("Active worktrees:")
+
+	// Show up to 5
+	shown := 0
+	for _, dw := range allWorktrees {
+		if shown >= 5 {
+			remaining := len(allWorktrees) - 5
+			ui.Detail("%s", ui.Dim(fmt.Sprintf("  ... and %d more", remaining)))
+			break
+		}
+		printDashboardWorktreeItem(dw)
+		shown++
+	}
+
+	return true
 }
 
-func countTotalWorktrees(worktrees map[string]map[string]*config.Worktree) int {
-	count := 0
-	for _, repoWorktrees := range worktrees {
-		count += len(repoWorktrees)
+// printDashboardWorktreeItem prints a single worktree in dashboard format
+func printDashboardWorktreeItem(dw dashboardWorktree) {
+	if dw.Orphaned {
+		// Tracked but git worktree is gone
+		fmt.Printf("  %s %s %s\n",
+			ui.Cyan(dw.Name),
+			ui.Dim("("+dw.RepoName+")"),
+			ui.Red("(orphaned)"),
+		)
+		return
 	}
-	return count
+
+	if dw.Tracked != nil {
+		// Tracked worktree
+		age := formatAge(dw.Tracked.LastUsed)
+
+		staleMarker := ""
+		if time.Since(dw.Tracked.LastUsed) > 7*24*time.Hour {
+			staleMarker = " " + ui.Yellow("(stale)")
+		}
+
+		label := dw.Tracked.Label
+		if label == "" || label == "worktree" {
+			label = ""
+		} else {
+			label = "[" + label + "] "
+		}
+
+		fmt.Printf("  %s %s%s - %s%s\n",
+			ui.Cyan(dw.Tracked.Name),
+			ui.Dim(label),
+			ui.Dim("("+dw.RepoName+")"),
+			ui.Dim(age),
+			staleMarker,
+		)
+	} else {
+		// Untracked worktree
+		fmt.Printf("  %s %s%s - %s\n",
+			ui.Cyan(dw.Name),
+			ui.Dim("(untracked) "),
+			ui.Dim("("+dw.RepoName+")"),
+			ui.Dim(dw.Branch),
+		)
+	}
 }
 
 func printDashboardExperiment(exp *config.Experiment) {
@@ -385,7 +502,21 @@ func showActionPicker(cfg *config.Config, state *config.State) error {
 		action{
 			Name:        "New",
 			Description: "Create a new worktree",
-			Handler:     runInteractiveNew,
+			Handler: func() error {
+				return runInteractiveNew(cfg)
+			},
+		},
+		action{
+			Name:        "Scratch",
+			Description: "Create a no-git scratch folder",
+			Handler:     runInteractiveScratch,
+		},
+		action{
+			Name:        "List",
+			Description: "Show all worktrees with full details",
+			Handler: func() error {
+				return runList(listCmd, []string{})
+			},
 		},
 		action{
 			Name:        "Register repo",
@@ -436,15 +567,15 @@ func showActionPicker(cfg *config.Config, state *config.State) error {
 	return actions[idx].Handler()
 }
 
-// runInteractiveNew prompts for name and optional type prefix
-func runInteractiveNew() error {
-	// Load config for label validation
-	cfg, err := config.Load()
+// runInteractiveNew prompts for repo selection, name, and optional type prefix
+func runInteractiveNew(cfg *config.Config) error {
+	// Step 1: Select repo (with smart default)
+	repoName, repoPath, err := selectRepoInteractive(cfg)
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		return nil // User cancelled or no repos
 	}
 
-	// First ask for the name
+	// Step 2: Ask for the worktree name
 	namePrompt := promptui.Prompt{
 		Label: "Worktree name",
 	}
@@ -456,7 +587,7 @@ func runInteractiveNew() error {
 		return fmt.Errorf("name is required")
 	}
 
-	// Then ask if they want a branch prefix
+	// Step 3: Ask for branch prefix type
 	typePrompt := promptui.Select{
 		Label: "Branch prefix",
 		Items: []string{
@@ -493,17 +624,125 @@ func runInteractiveNew() error {
 		branchPrefix = labelCfg.BranchPrefix
 	}
 
-	// Call CreateWorktree directly without mutating globals
+	// Step 4: Create worktree in selected repo
+	// Update last repo before creating worktree
+	cfg.LastRepo = repoPath
+	if err := cfg.Save(); err != nil {
+		ui.Warn("Failed to save config: %v", err)
+	}
+
 	return CreateWorktree(name, WorktreeConfig{
 		Label:        label,
 		BranchPrefix: branchPrefix,
 	}, WorktreeOptions{
-		// Use flag values from persistent flags (already parsed)
+		RepoFlag:     repoName, // Use the selected repo
 		EditorFlag:   workEditorFlag,
 		AgentFlag:    workAgentFlag,
 		NoAgentFlag:  workNoAgentFlag,
 		NoEditorFlag: workNoEditorFlag,
+		DryRunFlag:   workDryRunFlag,
 	})
+}
+
+// selectRepoInteractive shows a repo picker with smart defaults
+// Returns repo name, repo path, and error
+func selectRepoInteractive(cfg *config.Config) (string, string, error) {
+	if len(cfg.Repos) == 0 {
+		ui.Warn("No repositories registered")
+		ui.Detail("Register one first: clade repo add <path>")
+		return "", "", fmt.Errorf("no repos")
+	}
+
+	// Detect if current directory is in a registered repo
+	currentRepoName := detectCurrentRepo(cfg)
+
+	// Build sorted list of repo names
+	var repoNames []string
+	for name := range cfg.Repos {
+		repoNames = append(repoNames, name)
+	}
+	sort.Strings(repoNames)
+
+	// If only one repo, auto-select it
+	if len(repoNames) == 1 {
+		name := repoNames[0]
+		path := config.ExpandPath(cfg.Repos[name])
+		ui.Info("Using repo: %s", name)
+		return name, path, nil
+	}
+
+	// Build display items with current repo marker
+	var items []string
+	defaultIdx := 0
+	for i, name := range repoNames {
+		path := cfg.Repos[name]
+		marker := ""
+		if name == currentRepoName {
+			marker = " (current)"
+			defaultIdx = i
+		} else if config.ExpandPath(path) == cfg.LastRepo {
+			marker = " (last used)"
+		}
+		items = append(items, fmt.Sprintf("%s  %s%s", name, ui.Dim(path), marker))
+	}
+
+	prompt := promptui.Select{
+		Label:     "Select repository",
+		Items:     items,
+		CursorPos: defaultIdx,
+		Size:      8,
+	}
+
+	idx, _, err := prompt.Run()
+	if err != nil {
+		return "", "", err
+	}
+
+	selectedName := repoNames[idx]
+	selectedPath := config.ExpandPath(cfg.Repos[selectedName])
+	return selectedName, selectedPath, nil
+}
+
+// detectCurrentRepo returns the name of the registered repo that contains cwd
+// Returns empty string if cwd is not in a registered repo
+func detectCurrentRepo(cfg *config.Config) string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+
+	// If we're in a worktree, get the main repo
+	if git.IsWorktree(cwd) {
+		cwd, _ = git.GetMainRepoRoot(cwd)
+	} else if git.IsGitRepo(cwd) {
+		cwd, _ = git.GetRepoRoot(cwd)
+	}
+
+	// Check if cwd matches any registered repo
+	for name, path := range cfg.Repos {
+		expandedPath := config.ExpandPath(path)
+		if expandedPath == cwd {
+			return name
+		}
+	}
+
+	return ""
+}
+
+// runInteractiveScratch prompts for name and creates a scratch folder
+func runInteractiveScratch() error {
+	prompt := promptui.Prompt{
+		Label: "Scratch folder name",
+	}
+	name, err := prompt.Run()
+	if err != nil {
+		return nil // User cancelled
+	}
+	if name == "" {
+		return fmt.Errorf("name is required")
+	}
+
+	return runScratch(scratchCmd, []string{name})
 }
 
 // runInteractiveRepoAdd prompts for a path and adds a repo

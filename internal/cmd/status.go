@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,8 @@ import (
 	"github.com/daniil-lyalko/clade/internal/ui"
 	"github.com/spf13/cobra"
 )
+
+var statusJSONFlag bool
 
 var statusCmd = &cobra.Command{
 	Use:   "status",
@@ -25,12 +28,45 @@ Shows:
 Works in any directory:
   - In a clade experiment: Full context info
   - In a regular git repo: Basic info + suggestion to init
-  - Not in git repo: Clear message`,
+  - Not in git repo: Clear message
+
+Use --json for machine-readable output.`,
 	RunE: runStatus,
 }
 
 func init() {
 	rootCmd.AddCommand(statusCmd)
+	statusCmd.Flags().BoolVar(&statusJSONFlag, "json", false, "Output as JSON")
+}
+
+// StatusOutputJSON is the JSON output structure for status command
+type StatusOutputJSON struct {
+	InGitRepo    bool             `json:"in_git_repo"`
+	IsCladeManaged bool           `json:"is_clade_managed"`
+	RepoRoot     string           `json:"repo_root,omitempty"`
+	Branch       string           `json:"branch,omitempty"`
+	Name         string           `json:"name,omitempty"`
+	Type         string           `json:"type,omitempty"`
+	Repo         string           `json:"repo,omitempty"`
+	Ticket       string           `json:"ticket,omitempty"`
+	ContextFiles []StatusFileJSON `json:"context_files,omitempty"`
+	HooksConfigured bool          `json:"hooks_configured"`
+	GitStatus    *StatusGitJSON   `json:"git_status,omitempty"`
+}
+
+// StatusFileJSON represents a context file in JSON output
+type StatusFileJSON struct {
+	Name   string `json:"name"`
+	Exists bool   `json:"exists"`
+}
+
+// StatusGitJSON represents git status in JSON output
+type StatusGitJSON struct {
+	Clean            bool     `json:"clean"`
+	UncommittedCount int      `json:"uncommitted_count"`
+	StagedFiles      []string `json:"staged_files,omitempty"`
+	ModifiedFiles    []string `json:"modified_files,omitempty"`
+	UntrackedFiles   []string `json:"untracked_files,omitempty"`
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
@@ -41,6 +77,12 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	// Check if we're in a git repo
 	if !git.IsGitRepo(cwd) {
+		if statusJSONFlag {
+			output := StatusOutputJSON{InGitRepo: false}
+			data, _ := json.MarshalIndent(output, "", "  ")
+			fmt.Println(string(data))
+			return nil
+		}
 		ui.Info("Not in a git repository")
 		ui.Detail("Navigate to a git repo or clade experiment")
 		return nil
@@ -52,17 +94,78 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check for .clade.json (indicates clade-managed worktree)
-	cladeMetaPath := filepath.Join(repoRoot, ".clade.json")
 	metadata, _ := context.ReadCladeMetadata(repoRoot)
+
+	if statusJSONFlag {
+		return printStatusJSON(repoRoot, metadata)
+	}
 
 	if metadata != nil {
 		// We're in a clade-managed worktree
 		printCladeStatus(repoRoot, metadata)
-	} else if _, err := os.Stat(cladeMetaPath); os.IsNotExist(err) {
+	} else {
 		// Regular git repo, not clade-managed
 		printBasicStatus(repoRoot)
 	}
 
+	return nil
+}
+
+func printStatusJSON(repoRoot string, metadata *context.CladeMetadata) error {
+	output := StatusOutputJSON{
+		InGitRepo: true,
+		RepoRoot:  repoRoot,
+	}
+
+	// Branch
+	if branch, err := git.GetCurrentBranch(repoRoot); err == nil {
+		output.Branch = branch
+	}
+
+	// Check hooks
+	claudeSettingsPath := filepath.Join(repoRoot, ".claude", "settings.json")
+	_, err := os.Stat(claudeSettingsPath)
+	output.HooksConfigured = err == nil
+
+	if metadata != nil {
+		output.IsCladeManaged = true
+		output.Name = metadata.Name
+		output.Type = metadata.Type
+		output.Repo = metadata.Repo
+		output.Ticket = metadata.Ticket
+
+		// Context files
+		contextFiles := []string{"CLAUDE.md", "DROPBAG.md"}
+		if metadata.Ticket != "" {
+			contextFiles = append(contextFiles, "TICKET.md")
+		}
+		for _, f := range contextFiles {
+			path := filepath.Join(repoRoot, f)
+			_, err := os.Stat(path)
+			output.ContextFiles = append(output.ContextFiles, StatusFileJSON{
+				Name:   f,
+				Exists: err == nil,
+			})
+		}
+	}
+
+	// Git status
+	status, err := git.GetStatus(repoRoot)
+	if err == nil {
+		output.GitStatus = &StatusGitJSON{
+			Clean:            status.Clean,
+			UncommittedCount: status.UncommittedCount,
+			StagedFiles:      status.StagedFiles,
+			ModifiedFiles:    status.ModifiedFiles,
+			UntrackedFiles:   status.UntrackedFiles,
+		}
+	}
+
+	data, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(data))
 	return nil
 }
 

@@ -75,6 +75,14 @@ func RemoveWorktree(repoPath, worktreePath string) error {
 	return nil
 }
 
+// WorktreeInfo contains detailed information about a git worktree
+type WorktreeInfo struct {
+	Path   string // Absolute path to worktree
+	Branch string // Branch name (without refs/heads/)
+	Head   string // Commit SHA
+	IsMain bool   // True if this is the main repo, not a worktree
+}
+
 // ListWorktrees returns all worktrees for a repository
 func ListWorktrees(repoPath string) ([]string, error) {
 	cmd := exec.Command("git", "worktree", "list", "--porcelain")
@@ -89,6 +97,57 @@ func ListWorktrees(repoPath string) ([]string, error) {
 		if strings.HasPrefix(line, "worktree ") {
 			worktrees = append(worktrees, strings.TrimPrefix(line, "worktree "))
 		}
+	}
+
+	return worktrees, nil
+}
+
+// ListWorktreesDetailed returns detailed info about all worktrees for a repository
+func ListWorktreesDetailed(repoPath string) ([]WorktreeInfo, error) {
+	cmd := exec.Command("git", "worktree", "list", "--porcelain")
+	cmd.Dir = repoPath
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list worktrees: %w", err)
+	}
+
+	// Get main repo path to identify which entry is the main worktree
+	mainRepoPath, _ := GetMainRepoRoot(repoPath)
+
+	var worktrees []WorktreeInfo
+	var current WorktreeInfo
+
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			// Empty line marks end of a worktree entry
+			if current.Path != "" {
+				// Check if this is the main repo
+				current.IsMain = (current.Path == mainRepoPath)
+				worktrees = append(worktrees, current)
+			}
+			current = WorktreeInfo{}
+			continue
+		}
+
+		if strings.HasPrefix(line, "worktree ") {
+			current.Path = strings.TrimPrefix(line, "worktree ")
+		} else if strings.HasPrefix(line, "HEAD ") {
+			current.Head = strings.TrimPrefix(line, "HEAD ")
+		} else if strings.HasPrefix(line, "branch ") {
+			// Branch is like "refs/heads/main" - extract just the branch name
+			branch := strings.TrimPrefix(line, "branch ")
+			branch = strings.TrimPrefix(branch, "refs/heads/")
+			current.Branch = branch
+		} else if line == "detached" {
+			current.Branch = "(detached)"
+		}
+	}
+
+	// Don't forget the last entry if output doesn't end with newline
+	if current.Path != "" {
+		current.IsMain = (current.Path == mainRepoPath)
+		worktrees = append(worktrees, current)
 	}
 
 	return worktrees, nil

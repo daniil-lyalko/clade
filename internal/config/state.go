@@ -12,6 +12,7 @@ type Worktree struct {
 	Name     string    `json:"name"`
 	Label    string    `json:"label"` // feature, bug, spike, chore, hotfix, docs, or custom
 	Branch   string    `json:"branch"`
+	Path     string    `json:"path,omitempty"` // Actual path if not in ~/clade/repos/ (for adopted worktrees)
 	Ticket   string    `json:"ticket,omitempty"`
 	Created  time.Time `json:"created"`
 	LastUsed time.Time `json:"last_used"`
@@ -73,6 +74,17 @@ type State struct {
 // StatePath returns the path to the state file
 func StatePath(cfg *Config) string {
 	return filepath.Join(cfg.GetBaseDir(), "state.json")
+}
+
+// NewState creates a new empty state with default values
+func NewState() *State {
+	return &State{
+		Version:     2,
+		Worktrees:   make(map[string]map[string]*Worktree),
+		Experiments: make(map[string]*Experiment),
+		Projects:    make(map[string]*Project),
+		Scratches:   make(map[string]*Scratch),
+	}
 }
 
 // LoadState reads the state from disk
@@ -175,6 +187,14 @@ func (s *State) FindWorktreeByName(name string) (string, *Worktree) {
 // WorktreePath returns the path for a worktree given config and repo name
 func WorktreePath(cfg *Config, repoName, name string) string {
 	return filepath.Join(cfg.ReposDir(), repoName, name)
+}
+
+// GetWorktreePath returns the actual path for a worktree, using custom Path if set
+func GetWorktreePath(cfg *Config, repoName string, wt *Worktree) string {
+	if wt.Path != "" {
+		return wt.Path
+	}
+	return WorktreePath(cfg, repoName, wt.Name)
 }
 
 // AddExperiment adds or updates an experiment in state (v1 format, deprecated)

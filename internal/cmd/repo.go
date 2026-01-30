@@ -35,6 +35,13 @@ Examples:
   clade repo add ~/repos              # Scans and adds all repos in folder`,
 	Args: cobra.ExactArgs(1),
 	RunE: runRepoAdd,
+	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) != 0 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		// Enable directory completion for paths
+		return nil, cobra.ShellCompDirectiveFilterDirs
+	},
 }
 
 var repoListCmd = &cobra.Command{

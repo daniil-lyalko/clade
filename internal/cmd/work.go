@@ -20,6 +20,7 @@ var (
 	workNoAgentFlag  bool
 	workNoEditorFlag bool
 	workTypeFlag     string
+	workDryRunFlag   bool
 )
 
 var workCmd = &cobra.Command{
@@ -61,12 +62,15 @@ Creates:
 
 func init() {
 	rootCmd.AddCommand(workCmd)
+	// Hide work command - users should use `clade <name>` shorthand instead
+	workCmd.Hidden = true
 	// Command-specific flags (editor/agent flags inherited from root's persistent flags)
 	workCmd.Flags().StringVarP(&workTypeFlag, "type", "t", "", "Type of worktree (spike, feature, bug, chore, hotfix, docs, or custom)")
 	workCmd.Flags().StringVarP(&workRepoFlag, "repo", "r", "", "Repository path or registered name")
 	workCmd.Flags().BoolVarP(&workPickFlag, "pick", "p", false, "Force repo picker")
 	workCmd.Flags().StringVarP(&workBranchFlag, "branch", "b", "", "Custom branch name")
 	workCmd.Flags().StringVarP(&workFromFlag, "from", "f", "", "Base branch to create from (default: origin's default branch)")
+	workCmd.Flags().BoolVar(&workDryRunFlag, "dry-run", false, "Preview what would be created without making changes")
 }
 
 func runWork(cmd *cobra.Command, args []string) error {
@@ -122,6 +126,7 @@ func runWork(cmd *cobra.Command, args []string) error {
 		AgentFlag:    workAgentFlag,
 		NoAgentFlag:  workNoAgentFlag,
 		NoEditorFlag: workNoEditorFlag,
+		DryRunFlag:   workDryRunFlag,
 	})
 }
 

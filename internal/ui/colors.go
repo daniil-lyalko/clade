@@ -2,9 +2,18 @@ package ui
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/fatih/color"
 )
+
+func init() {
+	// Support NO_COLOR standard (https://no-color.org/)
+	// Also disable colors for dumb terminals
+	if os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
+		color.NoColor = true
+	}
+}
 
 var (
 	// Colors
