@@ -273,6 +273,13 @@ func (c *Config) ScratchDir() string {
 	return filepath.Join(c.GetBaseDir(), "scratch")
 }
 
+// ArchiveDir returns the path to the session archive directory
+// Archives are stored in ~/.config/clade/archive/ to persist across base_dir changes
+func ArchiveDir() string {
+	homeDir, _ := os.UserHomeDir()
+	return filepath.Join(homeDir, ".config", "clade", "archive")
+}
+
 // GetRepoCopyFiles returns the copy_files setting for a repo
 func (c *Config) GetRepoCopyFiles(repoPath string) []string {
 	if settings, ok := c.RepoSettings[repoPath]; ok {

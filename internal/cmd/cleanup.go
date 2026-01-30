@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/daniil-lyalko/clade/internal/config"
 	"github.com/daniil-lyalko/clade/internal/git"
@@ -156,6 +158,19 @@ func cleanupWorktree(cfg *config.Config, state *config.State, repoName string, w
 		ui.Detail("  Path: %s", wtPath)
 		ui.Detail("  Branch: %s", wt.Branch)
 		ui.Detail("  Label: %s", wt.Label)
+		// Check for dropbags
+		dropbagsDir := filepath.Join(wtPath, ".clade", "dropbags")
+		if entries, err := os.ReadDir(dropbagsDir); err == nil {
+			dropbagCount := 0
+			for _, e := range entries {
+				if strings.HasPrefix(e.Name(), "DROPBAG-") {
+					dropbagCount++
+				}
+			}
+			if dropbagCount > 0 {
+				ui.Detail("  Would archive %d dropbag(s) to ~/.config/clade/archive/", dropbagCount)
+			}
+		}
 		ui.Detail("  Would prompt for branch deletion")
 		return nil
 	}
@@ -210,6 +225,13 @@ func cleanupWorktree(cfg *config.Config, state *config.State, repoName string, w
 				return nil
 			}
 		}
+	}
+
+	// Archive dropbags before removing worktree
+	if archivePath, err := archiveDropbags(wtPath, repoName, wt.Name); err != nil {
+		ui.Warn("Failed to archive session context: %v", err)
+	} else if archivePath != "" {
+		ui.Success("Archived session context to %s", archivePath)
 	}
 
 	// Remove worktree
@@ -276,6 +298,19 @@ func cleanupExperiment(cfg *config.Config, state *config.State, key string, exp 
 		ui.Info("[DRY RUN] Would clean up experiment: %s", exp.Name)
 		ui.Detail("  Path: %s", exp.Path)
 		ui.Detail("  Branch: %s", exp.Branch)
+		// Check for dropbags
+		dropbagsDir := filepath.Join(exp.Path, ".clade", "dropbags")
+		if entries, err := os.ReadDir(dropbagsDir); err == nil {
+			dropbagCount := 0
+			for _, e := range entries {
+				if strings.HasPrefix(e.Name(), "DROPBAG-") {
+					dropbagCount++
+				}
+			}
+			if dropbagCount > 0 {
+				ui.Detail("  Would archive %d dropbag(s) to ~/.config/clade/archive/", dropbagCount)
+			}
+		}
 		ui.Detail("  Would prompt for branch deletion")
 		return nil
 	}
@@ -315,6 +350,13 @@ func cleanupExperiment(cfg *config.Config, state *config.State, key string, exp 
 				return nil
 			}
 		}
+	}
+
+	// Archive dropbags before removing worktree
+	if archivePath, err := archiveDropbags(exp.Path, filepath.Base(exp.Repo), exp.Name); err != nil {
+		ui.Warn("Failed to archive session context: %v", err)
+	} else if archivePath != "" {
+		ui.Success("Archived session context to %s", archivePath)
 	}
 
 	// Remove worktree
@@ -550,4 +592,83 @@ func completeCleanupNames(cmd *cobra.Command, args []string, toComplete string) 
 	}
 
 	return names, cobra.ShellCompDirectiveNoFileComp
+}
+
+// archiveDropbags copies dropbag files and metadata to the archive directory
+// before a worktree is removed. This preserves session history for future reference.
+// Archive location: ~/.config/clade/archive/{repo}/{name}-{timestamp}/
+func archiveDropbags(wtPath, repoName, wtName string) (string, error) {
+	dropbagsDir := filepath.Join(wtPath, ".clade", "dropbags")
+
+	// Check if dropbags directory exists
+	if _, err := os.Stat(dropbagsDir); os.IsNotExist(err) {
+		return "", nil // No dropbags to archive
+	}
+
+	// List dropbag files
+	entries, err := os.ReadDir(dropbagsDir)
+	if err != nil {
+		return "", err
+	}
+
+	// Filter for DROPBAG-*.md files
+	var dropbagFiles []os.DirEntry
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "DROPBAG-") && strings.HasSuffix(e.Name(), ".md") {
+			dropbagFiles = append(dropbagFiles, e)
+		}
+	}
+
+	if len(dropbagFiles) == 0 {
+		return "", nil // No dropbags to archive
+	}
+
+	// Create archive directory: ~/.config/clade/archive/{repo}/{name}-{timestamp}/
+	timestamp := time.Now().Format("20060102-1504")
+	archiveDir := filepath.Join(config.ArchiveDir(), repoName, fmt.Sprintf("%s-%s", wtName, timestamp))
+
+	if err := os.MkdirAll(archiveDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create archive directory: %w", err)
+	}
+
+	// Copy dropbag files
+	for _, e := range dropbagFiles {
+		src := filepath.Join(dropbagsDir, e.Name())
+		dst := filepath.Join(archiveDir, e.Name())
+		if err := copyFile(src, dst); err != nil {
+			ui.Warn("Failed to archive %s: %v", e.Name(), err)
+		}
+	}
+
+	// Copy .clade.json metadata if it exists
+	cladeJSON := filepath.Join(wtPath, ".clade.json")
+	if _, err := os.Stat(cladeJSON); err == nil {
+		dst := filepath.Join(archiveDir, ".clade.json")
+		if err := copyFile(cladeJSON, dst); err != nil {
+			ui.Warn("Failed to archive .clade.json: %v", err)
+		}
+	}
+
+	return archiveDir, nil
+}
+
+// copyFile copies a file from src to dst
+func copyFile(src, dst string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		return err
+	}
+
+	return dstFile.Sync()
 }

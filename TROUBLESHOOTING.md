@@ -15,6 +15,7 @@ This guide helps diagnose and resolve common issues with Clade.
   - [Symlink warnings during copy](#symlink-warnings-during-copy)
   - [Hook trust prompt appears repeatedly](#hook-trust-prompt-appears-repeatedly)
   - [State file corruption](#state-file-corruption)
+  - [Orphaned worktrees](#orphaned-worktrees)
   - [Branch name validation errors](#branch-name-validation-errors)
 - [Diagnostic Commands](#diagnostic-commands)
 
@@ -332,6 +333,74 @@ cat ~/clade/state.json | jq .
    # Edit state.json to match reality
    vim ~/clade/state.json
    ```
+
+---
+
+### Orphaned worktrees
+
+**Symptoms:**
+- Clade shows worktree but directory doesn't exist
+- Directory exists but `clade list` doesn't show it
+- Git worktree exists but clade state is out of sync
+
+**Diagnosis:**
+
+```bash
+# Compare what clade knows vs what exists
+clade list
+ls ~/clade/repos/*/
+
+# Compare with git's worktree tracking
+cd ~/repos/my-api  # Your source repo
+git worktree list
+```
+
+**Solutions:**
+
+**Scenario 1: Clade shows worktree but directory is missing**
+
+The directory was deleted outside of clade (manual `rm`, disk cleanup, etc.):
+
+```bash
+# Option A: Remove stale entry by resetting state
+rm ~/clade/state.json
+clade list  # Fresh start
+
+# Option B: Recreate the worktree
+clade foo -t spike  # Will create it again
+```
+
+**Scenario 2: Directory exists but clade doesn't know about it**
+
+Worktree was created manually or state was corrupted:
+
+```bash
+# If you want to keep it, just resume it
+# Clade will "adopt" existing directories
+clade resume foo -r my-repo
+
+# If you don't need it, remove manually
+rm -rf ~/clade/repos/my-repo/foo
+git -C ~/repos/my-api worktree prune
+```
+
+**Scenario 3: Git worktree out of sync**
+
+Git knows about worktrees that no longer exist:
+
+```bash
+# Clean up git's worktree tracking
+cd ~/repos/my-api
+git worktree list       # See what git thinks exists
+git worktree prune      # Remove stale entries
+```
+
+**Prevention:**
+
+Always use `clade cleanup` instead of manually deleting worktree directories. This ensures:
+1. Git worktree is properly removed
+2. Clade state is updated
+3. Session context is archived for future reference
 
 ---
 
