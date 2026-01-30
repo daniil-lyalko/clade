@@ -206,7 +206,7 @@ func runProject(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(repos) < 2 {
-		ui.Warn("Only one repo added. Consider using 'clade exp' for single-repo work.")
+		ui.Warn("Only one repo added. Consider using 'clade <name>' for single-repo work.")
 		prompt := promptui.Prompt{
 			Label:     "Continue anyway",
 			IsConfirm: true,
@@ -292,7 +292,7 @@ func runProject(cmd *cobra.Command, args []string) error {
 		var wtErr error
 		switch info.Status {
 		case git.BranchNotFound:
-			wtErr = git.CreateWorktreeNew(repo.SourcePath, worktreePath, branchName)
+			_, wtErr = git.CreateWorktreeNew(repo.SourcePath, worktreePath, branchName, "")
 		case git.BranchLocalOnly, git.BranchBoth:
 			wtErr = git.CreateWorktreeFromBranch(repo.SourcePath, worktreePath, branchName)
 		case git.BranchRemoteOnly:
@@ -614,7 +614,7 @@ func runProjectAdd(cmd *cobra.Command, args []string) error {
 	var wtErr error
 	switch info.Status {
 	case git.BranchNotFound:
-		wtErr = git.CreateWorktreeNew(repoPath, worktreePath, project.Branch)
+		_, wtErr = git.CreateWorktreeNew(repoPath, worktreePath, project.Branch, "")
 	case git.BranchLocalOnly, git.BranchBoth:
 		wtErr = git.CreateWorktreeFromBranch(repoPath, worktreePath, project.Branch)
 	case git.BranchRemoteOnly:

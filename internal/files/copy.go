@@ -1,6 +1,7 @@
 package files
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -34,7 +35,7 @@ var DefaultCopyFiles = []string{
 }
 
 // FindCopyableFiles checks the source repo for files from the given list that exist.
-// Returns only the files that are present and are regular files (not directories).
+// Returns only the files that are present and are regular files (not directories or symlinks).
 func FindCopyableFiles(repoPath string, patterns []string) []string {
 	seen := make(map[string]bool)
 	var found []string
@@ -46,10 +47,19 @@ func FindCopyableFiles(repoPath string, patterns []string) []string {
 		seen[pattern] = true
 
 		fullPath := filepath.Join(repoPath, pattern)
-		info, err := os.Stat(fullPath)
-		if err == nil && !info.IsDir() {
-			found = append(found, pattern)
+
+		// Use Lstat to detect symlinks (Stat follows symlinks)
+		info, err := os.Lstat(fullPath)
+		if err != nil {
+			continue
 		}
+
+		// Skip directories and symlinks
+		if info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			continue
+		}
+
+		found = append(found, pattern)
 	}
 
 	return found
@@ -75,13 +85,23 @@ func CopyFiles(srcDir, dstDir string, files []string) error {
 }
 
 func copyFile(src, dst string) error {
+	// Security: Check for symlinks before copying
+	srcInfo, err := os.Lstat(src)
+	if err != nil {
+		return err
+	}
+	if srcInfo.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing to copy symlink: %s", src)
+	}
+
 	srcFile, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer srcFile.Close()
 
-	srcInfo, err := srcFile.Stat()
+	// Get file info from the opened file (not Lstat)
+	fileInfo, err := srcFile.Stat()
 	if err != nil {
 		return err
 	}
@@ -96,5 +116,5 @@ func copyFile(src, dst string) error {
 		return err
 	}
 
-	return os.Chmod(dst, srcInfo.Mode())
+	return os.Chmod(dst, fileInfo.Mode())
 }

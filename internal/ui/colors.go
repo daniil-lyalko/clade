@@ -15,6 +15,9 @@ var (
 	Magenta = color.New(color.FgMagenta).SprintFunc()
 	Bold    = color.New(color.Bold).SprintFunc()
 	Dim     = color.New(color.Faint).SprintFunc()
+
+	// Verbose mode flag - set by root command
+	Verbose bool
 )
 
 // Success prints a success message
@@ -50,4 +53,11 @@ func Detail(format string, args ...interface{}) {
 // KeyValue prints a key-value pair
 func KeyValue(key, value string) {
 	fmt.Printf("  %s: %s\n", Dim(key), value)
+}
+
+// Debug prints a debug message (only when verbose mode is enabled)
+func Debug(format string, args ...interface{}) {
+	if Verbose {
+		fmt.Printf("  %s %s\n", Dim("[debug]"), fmt.Sprintf(format, args...))
+	}
 }

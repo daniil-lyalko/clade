@@ -3,9 +3,47 @@ package git
 import (
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 )
+
+// validBranchPattern matches safe branch names:
+// - Starts with alphanumeric
+// - Contains only alphanumeric, forward slash, underscore, hyphen, or dot
+// - No consecutive dots (..)
+var validBranchPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9/_.-]*$`)
+
+// ValidateBranchName validates a branch name for safety
+// Prevents command injection and path traversal attacks
+func ValidateBranchName(branch string) error {
+	if branch == "" {
+		return fmt.Errorf("branch name cannot be empty")
+	}
+
+	if !validBranchPattern.MatchString(branch) {
+		return fmt.Errorf("invalid branch name %q: use alphanumeric, /, _, -, . only (must start with alphanumeric)", branch)
+	}
+
+	// Prevent path traversal
+	if strings.Contains(branch, "..") {
+		return fmt.Errorf("invalid branch name %q: cannot contain '..'", branch)
+	}
+
+	// Prevent absolute paths
+	if strings.HasPrefix(branch, "/") {
+		return fmt.Errorf("invalid branch name %q: cannot start with '/'", branch)
+	}
+
+	// Prevent control characters and shell metacharacters
+	for _, r := range branch {
+		if r < 32 || r == 127 || r == ';' || r == '&' || r == '|' || r == '`' || r == '$' || r == '!' || r == '*' || r == '?' {
+			return fmt.Errorf("invalid branch name %q: contains unsafe character %q", branch, r)
+		}
+	}
+
+	return nil
+}
 
 // BranchStatus represents where a branch exists
 type BranchStatus int
@@ -28,6 +66,11 @@ type BranchInfo struct {
 // CheckBranch checks if a branch exists locally and/or on remote
 func CheckBranch(repoPath, branch string) BranchInfo {
 	info := BranchInfo{Status: BranchNotFound}
+
+	// Validate branch name before any git operations
+	if err := ValidateBranchName(branch); err != nil {
+		return info // Return NotFound for invalid branch names
+	}
 
 	localExists := branchExistsLocal(repoPath, branch)
 	remoteExists := branchExistsRemote(repoPath, branch)
@@ -87,38 +130,76 @@ func Fetch(repoPath string) error {
 	return cmd.Run()
 }
 
-// CreateWorktreeNew creates a new worktree with a new branch from origin's default
-// Returns error if branch already exists anywhere
-func CreateWorktreeNew(repoPath, worktreePath, branch string) error {
+// CreateWorktreeNew creates a new worktree with a new branch.
+// If baseBranch is empty, uses origin's default branch (main/master).
+// Returns the actual base branch used and any error.
+func CreateWorktreeNew(repoPath, worktreePath, branch, baseBranch string) (string, error) {
+	// Validate branch name before any git operations
+	if err := ValidateBranchName(branch); err != nil {
+		return "", err
+	}
+
 	// Fetch first
 	Fetch(repoPath) // Ignore error - might be offline
 
 	// Check if branch exists anywhere
 	info := CheckBranch(repoPath, branch)
 	if info.Status != BranchNotFound {
-		return fmt.Errorf("branch '%s' already exists", branch)
+		return "", fmt.Errorf("branch '%s' already exists", branch)
 	}
 
 	// Check if remote exists
 	hasRemote := hasOriginRemote(repoPath)
 
 	var cmd *exec.Cmd
-	if hasRemote {
-		// Create new branch from origin's default branch
+	var actualBase string
+
+	if baseBranch != "" {
+		// User specified a base branch
+		// Try origin/baseBranch first, fall back to local baseBranch
+		if hasRemote {
+			checkCmd := exec.Command("git", "rev-parse", "--verify", "origin/"+baseBranch)
+			checkCmd.Dir = repoPath
+			if checkCmd.Run() == nil {
+				actualBase = "origin/" + baseBranch
+			} else {
+				// Try local branch
+				checkCmd = exec.Command("git", "rev-parse", "--verify", baseBranch)
+				checkCmd.Dir = repoPath
+				if checkCmd.Run() == nil {
+					actualBase = baseBranch
+				} else {
+					return "", fmt.Errorf("base branch '%s' not found (checked origin/%s and %s)", baseBranch, baseBranch, baseBranch)
+				}
+			}
+		} else {
+			// No remote - use local branch
+			checkCmd := exec.Command("git", "rev-parse", "--verify", baseBranch)
+			checkCmd.Dir = repoPath
+			if checkCmd.Run() != nil {
+				return "", fmt.Errorf("base branch '%s' not found", baseBranch)
+			}
+			actualBase = baseBranch
+		}
+		cmd = exec.Command("git", "worktree", "add", "-b", branch, worktreePath, actualBase)
+	} else if hasRemote {
+		// Default: create from origin's default branch
 		defaultBranch := GetDefaultBranch(repoPath)
-		cmd = exec.Command("git", "worktree", "add", "-b", branch, worktreePath, "origin/"+defaultBranch)
+		actualBase = "origin/" + defaultBranch
+		cmd = exec.Command("git", "worktree", "add", "-b", branch, worktreePath, actualBase)
 	} else {
 		// No remote - create from HEAD
+		actualBase = "HEAD"
 		cmd = exec.Command("git", "worktree", "add", "-b", branch, worktreePath, "HEAD")
 	}
 
 	cmd.Dir = repoPath
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to create worktree: %s: %w", string(output), err)
+		return "", fmt.Errorf("failed to create worktree: %s: %w", string(output), err)
 	}
 
-	return nil
+	return actualBase, nil
 }
 
 // hasOriginRemote checks if the repo has an origin remote configured
@@ -130,6 +211,11 @@ func hasOriginRemote(repoPath string) bool {
 
 // CreateWorktreeFromBranch creates a worktree from an existing local branch
 func CreateWorktreeFromBranch(repoPath, worktreePath, branch string) error {
+	// Validate branch name before any git operations
+	if err := ValidateBranchName(branch); err != nil {
+		return err
+	}
+
 	cmd := exec.Command("git", "worktree", "add", worktreePath, branch)
 	cmd.Dir = repoPath
 	output, err := cmd.CombinedOutput()
@@ -141,6 +227,11 @@ func CreateWorktreeFromBranch(repoPath, worktreePath, branch string) error {
 
 // CreateWorktreeTrackRemote creates a worktree tracking a remote branch
 func CreateWorktreeTrackRemote(repoPath, worktreePath, branch string) error {
+	// Validate branch name before any git operations
+	if err := ValidateBranchName(branch); err != nil {
+		return err
+	}
+
 	// Create local branch tracking remote
 	cmd := exec.Command("git", "worktree", "add", "--track", "-b", branch, worktreePath, "origin/"+branch)
 	cmd.Dir = repoPath

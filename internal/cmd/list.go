@@ -73,9 +73,8 @@ func runList(cmd *cobra.Command, args []string) error {
 
 	if !hasContent {
 		ui.Info("No active worktrees, projects, or scratch folders")
-		ui.Detail("Create one with: clade feature <name>")
-		ui.Detail("Or for bugs: clade bug <name>")
-		ui.Detail("Or for spikes: clade spike <name>")
+		ui.Detail("Create one with: clade <name>")
+		ui.Detail("Or with type prefix: clade <name> -t feature")
 		ui.Detail("Or for no-git: clade scratch <name>")
 	}
 

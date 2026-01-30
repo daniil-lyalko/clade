@@ -14,6 +14,7 @@ var (
 	workRepoFlag     string
 	workPickFlag     bool
 	workBranchFlag   string
+	workFromFlag     string
 	workEditorFlag   string
 	workAgentFlag    string
 	workNoAgentFlag  bool
@@ -38,16 +39,21 @@ Use -t to add a type/prefix:
 
 Custom labels defined in config are also available.
 
+By default, new branches are created from origin's default branch (main/master).
+Use -f/--from to specify a different base branch:
+
+  clade work foo --from develop   # branch from develop instead of main
+
 Examples:
-  clade work new-api              # branch: new-api (no prefix)
-  clade work try-redis -t spike   # branch: spike/try-redis
-  clade work PROJ-123 -t bug      # branch: fix/PROJ-123
-  clade work cleanup -t chore     # branch: chore/cleanup
+  clade work new-api              # branch: new-api (from main)
+  clade work try-redis -t spike   # branch: spike/try-redis (from main)
+  clade work PROJ-123 -t bug      # branch: fix/PROJ-123 (from main)
+  clade work foo -f develop       # branch: foo (from develop)
   clade work foo -t perf          # custom label from config
 
 Creates:
   - A new worktree at ~/clade/repos/{repo}/{name}/
-  - A branch (with optional type prefix)
+  - A branch (with optional type prefix, from specified base)
   - Copies .claude/ config from the source repo`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runWork,
@@ -60,6 +66,7 @@ func init() {
 	workCmd.Flags().StringVarP(&workRepoFlag, "repo", "r", "", "Repository path or registered name")
 	workCmd.Flags().BoolVarP(&workPickFlag, "pick", "p", false, "Force repo picker")
 	workCmd.Flags().StringVarP(&workBranchFlag, "branch", "b", "", "Custom branch name")
+	workCmd.Flags().StringVarP(&workFromFlag, "from", "f", "", "Base branch to create from (default: origin's default branch)")
 }
 
 func runWork(cmd *cobra.Command, args []string) error {
@@ -110,6 +117,7 @@ func runWork(cmd *cobra.Command, args []string) error {
 		RepoFlag:     workRepoFlag,
 		PickFlag:     workPickFlag,
 		BranchFlag:   workBranchFlag,
+		FromFlag:     workFromFlag,
 		EditorFlag:   workEditorFlag,
 		AgentFlag:    workAgentFlag,
 		NoAgentFlag:  workNoAgentFlag,
