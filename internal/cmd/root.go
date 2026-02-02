@@ -536,6 +536,24 @@ func showActionPicker(cfg *config.Config, state *config.State) error {
 		})
 	}
 
+	// Config and Doctor - always available
+	actions = append(actions,
+		action{
+			Name:        "Config",
+			Description: "View or change settings",
+			Handler: func() error {
+				return runConfigWizard(configCmd, []string{})
+			},
+		},
+		action{
+			Name:        "Doctor",
+			Description: "Diagnose configuration issues",
+			Handler: func() error {
+				return runDoctor(doctorCmd, []string{})
+			},
+		},
+	)
+
 	actions = append(actions, action{
 		Name:        "Exit",
 		Description: "",

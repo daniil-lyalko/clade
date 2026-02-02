@@ -124,21 +124,60 @@ func runConfigWizard(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// Track whether we need to ask about editor separately
+	askEditor := false
+
 	switch idx {
 	case 0: // Claude Code
 		cfg.Agent = "claude"
 		cfg.AgentFlags = []string{}
 		cfg.Editor = ""
+		askEditor = true // Claude Code doesn't set editor, so ask
 	case 1: // Cursor
 		cfg.Agent = ""
-		cfg.Editor = "cursor"
+		cfg.Editor = "cursor" // Cursor IS the editor, no need to ask
 	case 2: // Both
 		cfg.Agent = "claude"
 		cfg.AgentFlags = []string{}
-		cfg.Editor = "cursor"
+		cfg.Editor = "cursor" // Both means Cursor is the editor
 	case 3: // Neither
 		cfg.Agent = ""
 		cfg.Editor = ""
+		askEditor = true // No AI tool, ask what editor they want
+	}
+
+	// Ask about editor if not already set by AI tool choice
+	if askEditor {
+		fmt.Println()
+		editorPrompt := promptui.Select{
+			Label: "What editor/IDE do you use (for opening worktrees)",
+			Items: []string{
+				"Cursor",
+				"VS Code",
+				"Neovim",
+				"Other/None",
+			},
+		}
+
+		editorIdx, _, err := editorPrompt.Run()
+		if err != nil {
+			// User cancelled - save what we have
+			if saveErr := cfg.Save(); saveErr != nil {
+				return fmt.Errorf("failed to save config: %w", saveErr)
+			}
+			return nil
+		}
+
+		switch editorIdx {
+		case 0:
+			cfg.Editor = "cursor"
+		case 1:
+			cfg.Editor = "code"
+		case 2:
+			cfg.Editor = "nvim"
+		case 3:
+			cfg.Editor = ""
+		}
 	}
 
 	if err := cfg.Save(); err != nil {

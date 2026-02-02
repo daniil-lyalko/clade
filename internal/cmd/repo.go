@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/daniil-lyalko/clade/internal/config"
 	"github.com/daniil-lyalko/clade/internal/git"
 	"github.com/daniil-lyalko/clade/internal/ui"
+	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
 
@@ -230,11 +232,52 @@ func runRepoRemove(cmd *cobra.Command, args []string) error {
 
 	name := args[0]
 
-	if _, ok := cfg.Repos[name]; !ok {
+	repoPath, ok := cfg.Repos[name]
+	if !ok {
 		return fmt.Errorf("repository '%s' not found", name)
+	}
+	expandedPath := config.ExpandPath(repoPath)
+
+	// Check if there are tracked worktrees for this repo
+	state, _ := config.LoadState(cfg)
+	if tracked := state.Worktrees[name]; len(tracked) > 0 {
+		fmt.Println()
+		ui.Warn("Repository '%s' has %d tracked worktree(s):", name, len(tracked))
+
+		// Sort worktree names for consistent display
+		var wtNames []string
+		for wtName := range tracked {
+			wtNames = append(wtNames, wtName)
+		}
+		sort.Strings(wtNames)
+
+		for _, wtName := range wtNames {
+			ui.Detail("  %s", wtName)
+		}
+
+		fmt.Println()
+		ui.Info("Unregistering will NOT delete the worktrees - they'll show as 'unregistered repo' in list")
+		fmt.Println()
+
+		// Confirmation prompt
+		prompt := promptui.Prompt{
+			Label:     "Continue with unregistration",
+			IsConfirm: true,
+		}
+
+		_, err := prompt.Run()
+		if err != nil {
+			ui.Info("Cancelled")
+			return nil
+		}
 	}
 
 	delete(cfg.Repos, name)
+
+	// Also clean up RepoSettings for this repo path
+	if cfg.RepoSettings != nil {
+		delete(cfg.RepoSettings, expandedPath)
+	}
 
 	// Clear last repo if it was the one we removed
 	if cfg.LastRepo != "" {
