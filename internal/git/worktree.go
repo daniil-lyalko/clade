@@ -248,3 +248,26 @@ func IsGitRepo(path string) bool {
 func GetRepoName(repoPath string) string {
 	return filepath.Base(repoPath)
 }
+
+// PruneWorktrees removes stale worktree entries where the directory no longer exists
+func PruneWorktrees(repoPath string) error {
+	cmd := exec.Command("git", "worktree", "prune")
+	cmd.Dir = repoPath
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to prune worktrees: %s: %w", strings.TrimSpace(string(output)), err)
+	}
+	return nil
+}
+
+// HasPrunableWorktrees checks if there are stale worktree entries that can be pruned
+func HasPrunableWorktrees(repoPath string) (bool, error) {
+	cmd := exec.Command("git", "worktree", "prune", "--dry-run")
+	cmd.Dir = repoPath
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return false, fmt.Errorf("failed to check prunable worktrees: %w", err)
+	}
+	// Output is non-empty if there are prunable entries
+	return len(strings.TrimSpace(string(output))) > 0, nil
+}

@@ -242,6 +242,10 @@ func cleanupWorktree(cfg *config.Config, state *config.State, repoName string, w
 			if err := os.RemoveAll(wtPath); err != nil {
 				return fmt.Errorf("failed to remove worktree: %w", err)
 			}
+			// Prune orphaned worktree entries from git after manual removal
+			if pruneErr := git.PruneWorktrees(repoPath); pruneErr != nil {
+				ui.Warn("Failed to prune worktree entries: %v", pruneErr)
+			}
 		}
 	} else {
 		// No repo path found, just remove directory
@@ -365,6 +369,10 @@ func cleanupExperiment(cfg *config.Config, state *config.State, key string, exp 
 		// Try removing directory manually if worktree removal fails
 		if err := os.RemoveAll(exp.Path); err != nil {
 			return fmt.Errorf("failed to remove worktree: %w", err)
+		}
+		// Prune orphaned worktree entries from git after manual removal
+		if pruneErr := git.PruneWorktrees(exp.Repo); pruneErr != nil {
+			ui.Warn("Failed to prune worktree entries: %v", pruneErr)
 		}
 	}
 	ui.Success("Worktree removed")

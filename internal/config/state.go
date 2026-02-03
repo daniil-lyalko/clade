@@ -71,8 +71,29 @@ type State struct {
 	Scratches map[string]*Scratch `json:"scratches,omitempty"`
 }
 
+// testStateDir allows tests to override the state directory
+// This is only used in tests; production code uses the default path
+var testStateDir string
+
+// SetTestStateDir sets a custom state directory for testing
+// Pass empty string to reset to default behavior
+func SetTestStateDir(dir string) {
+	testStateDir = dir
+}
+
 // StatePath returns the path to the state file
-func StatePath(cfg *Config) string {
+// State is stored in ~/.config/clade/ alongside other metadata
+func StatePath() string {
+	if testStateDir != "" {
+		return filepath.Join(testStateDir, "state.json")
+	}
+	homeDir, _ := os.UserHomeDir()
+	return filepath.Join(homeDir, ".config", "clade", "state.json")
+}
+
+// LegacyStatePath returns the old state file location (in base_dir)
+// Used for auto-migration from v2 to v3
+func LegacyStatePath(cfg *Config) string {
 	return filepath.Join(cfg.GetBaseDir(), "state.json")
 }
 
@@ -88,8 +109,20 @@ func NewState() *State {
 }
 
 // LoadState reads the state from disk
+// Automatically migrates from legacy location if needed
 func LoadState(cfg *Config) (*State, error) {
-	statePath := StatePath(cfg)
+	newPath := StatePath()
+	oldPath := LegacyStatePath(cfg)
+
+	// Auto-migration: move from old location if exists and new doesn't
+	if _, err := os.Stat(oldPath); err == nil {
+		if _, err := os.Stat(newPath); os.IsNotExist(err) {
+			// Old exists, new doesn't - migrate silently
+			if err := os.MkdirAll(filepath.Dir(newPath), 0755); err == nil {
+				os.Rename(oldPath, newPath)
+			}
+		}
+	}
 
 	state := &State{
 		Version:     2,
@@ -99,7 +132,7 @@ func LoadState(cfg *Config) (*State, error) {
 		Scratches:   make(map[string]*Scratch),
 	}
 
-	data, err := os.ReadFile(statePath)
+	data, err := os.ReadFile(newPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return state, nil
@@ -129,8 +162,10 @@ func LoadState(cfg *Config) (*State, error) {
 }
 
 // Save writes the state to disk
+// Note: cfg parameter kept for backward compatibility but is no longer used
+// as state is now saved to ~/.config/clade/state.json
 func (s *State) Save(cfg *Config) error {
-	statePath := StatePath(cfg)
+	statePath := StatePath()
 
 	// Ensure directory exists
 	if err := os.MkdirAll(filepath.Dir(statePath), 0755); err != nil {

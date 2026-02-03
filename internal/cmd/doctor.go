@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/daniil-lyalko/clade/internal/config"
 	"github.com/daniil-lyalko/clade/internal/git"
@@ -78,6 +79,9 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	// Check state file
 	results = append(results, checkState())
 
+	// Check state location (legacy vs new path)
+	results = append(results, checkStateLocation())
+
 	// Check base directory
 	results = append(results, checkBaseDir())
 
@@ -92,6 +96,11 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 
 	// Check trust registry
 	results = append(results, checkTrustRegistry())
+
+	// Consistency checks - state vs filesystem vs git
+	results = append(results, checkOrphanedWorktrees()...)
+	results = append(results, checkUntrackedWorktrees()...)
+	results = append(results, checkPrunableWorktrees()...)
 
 	// Count results
 	for _, r := range results {
@@ -276,7 +285,7 @@ func checkState() checkResult {
 		}
 	}
 
-	statePath := config.StatePath(cfg)
+	statePath := config.StatePath()
 
 	// Check if state file exists
 	if _, statErr := os.Stat(statePath); os.IsNotExist(statErr) {
@@ -529,4 +538,214 @@ func checkTrustRegistry() checkResult {
 		ok:      true,
 		message: fmt.Sprintf("%d trusted repo(s)", len(registry.Repos)),
 	}
+}
+
+// checkStateLocation detects if state.json is at the legacy location
+func checkStateLocation() checkResult {
+	cfg, err := config.Load()
+	if err != nil {
+		return checkResult{
+			name:    "State location",
+			ok:      true, // Don't fail if config can't load
+			message: "could not check (config load failed)",
+		}
+	}
+
+	newPath := config.StatePath()
+	legacyPath := config.LegacyStatePath(cfg)
+
+	// If paths are the same (shouldn't happen but check anyway), all good
+	if newPath == legacyPath {
+		return checkResult{
+			name:    "State location",
+			ok:      true,
+			message: newPath,
+		}
+	}
+
+	// Check if state exists at LEGACY location
+	legacyExists := false
+	if _, err := os.Stat(legacyPath); err == nil {
+		legacyExists = true
+	}
+
+	newExists := false
+	if _, err := os.Stat(newPath); err == nil {
+		newExists = true
+	}
+
+	// Both exist - conflict!
+	if legacyExists && newExists {
+		return checkResult{
+			name:    "State location",
+			ok:      false,
+			message: fmt.Sprintf("CONFLICT: exists at both %s and %s", legacyPath, newPath),
+		}
+	}
+
+	// Legacy exists, new doesn't - offer migration
+	if legacyExists && !newExists {
+		return checkResult{
+			name:    "State location",
+			ok:      false,
+			warning: true,
+			message: fmt.Sprintf("at legacy location: %s", legacyPath),
+			fixFunc: func() error {
+				if err := os.MkdirAll(filepath.Dir(newPath), 0755); err != nil {
+					return err
+				}
+				return os.Rename(legacyPath, newPath)
+			},
+		}
+	}
+
+	// Normal case - state at new location (or doesn't exist anywhere)
+	return checkResult{
+		name:    "State location",
+		ok:      true,
+		message: newPath,
+	}
+}
+
+// checkOrphanedWorktrees finds state entries where the directory no longer exists
+func checkOrphanedWorktrees() []checkResult {
+	cfg, err := config.Load()
+	if err != nil {
+		return nil // Skip if config can't load
+	}
+
+	state, err := config.LoadState(cfg)
+	if err != nil {
+		return nil // Skip if state can't load
+	}
+
+	var results []checkResult
+	for repoName, worktrees := range state.Worktrees {
+		for _, wt := range worktrees {
+			wtPath := config.GetWorktreePath(cfg, repoName, wt)
+			if _, err := os.Stat(wtPath); os.IsNotExist(err) {
+				// Capture variables for closure
+				rn, wn := repoName, wt.Name
+				results = append(results, checkResult{
+					name:    fmt.Sprintf("Worktree: %s/%s", repoName, wt.Name),
+					ok:      false,
+					warning: true,
+					message: fmt.Sprintf("directory missing: %s", wtPath),
+					fixFunc: func() error {
+						// Reload state to get fresh copy
+						freshState, err := config.LoadState(cfg)
+						if err != nil {
+							return err
+						}
+						freshState.RemoveWorktree(rn, wn)
+						return freshState.Save(cfg)
+					},
+				})
+			}
+		}
+	}
+
+	return results
+}
+
+// checkUntrackedWorktrees finds git worktrees that aren't tracked in clade state
+func checkUntrackedWorktrees() []checkResult {
+	cfg, err := config.Load()
+	if err != nil {
+		return nil
+	}
+
+	state, err := config.LoadState(cfg)
+	if err != nil {
+		return nil
+	}
+
+	var results []checkResult
+	for repoName, repoPath := range cfg.Repos {
+		expandedPath := config.ExpandPath(repoPath)
+
+		// Get all git worktrees for this repo
+		gitWorktrees, err := git.ListWorktreesDetailed(expandedPath)
+		if err != nil {
+			continue // Skip repos we can't query
+		}
+
+		stateWorktrees := state.Worktrees[repoName]
+
+		for _, gitWt := range gitWorktrees {
+			if gitWt.IsMain {
+				continue // Skip main repo
+			}
+
+			// Check if this git worktree is tracked in clade state
+			found := false
+			for _, stateWt := range stateWorktrees {
+				stateWtPath := config.GetWorktreePath(cfg, repoName, stateWt)
+				if stateWtPath == gitWt.Path {
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				// Check if this worktree is under clade's repos directory
+				reposDir := cfg.ReposDir()
+				// Use strings.HasPrefix on cleaned paths to check containment
+				cleanedWtPath := filepath.Clean(gitWt.Path)
+				cleanedReposDir := filepath.Clean(reposDir) + string(filepath.Separator)
+				if !strings.HasPrefix(cleanedWtPath, cleanedReposDir) {
+					continue // Skip worktrees outside clade's management
+				}
+
+				results = append(results, checkResult{
+					name:    fmt.Sprintf("Untracked: %s", filepath.Base(gitWt.Path)),
+					ok:      false,
+					warning: true,
+					message: fmt.Sprintf("git worktree not tracked by clade (branch: %s)", gitWt.Branch),
+					// No auto-fix - user should decide to adopt or remove via 'clade resume' or 'clade cleanup'
+				})
+			}
+		}
+	}
+
+	return results
+}
+
+// checkPrunableWorktrees finds repos with stale git worktree entries
+func checkPrunableWorktrees() []checkResult {
+	cfg, err := config.Load()
+	if err != nil {
+		return nil
+	}
+
+	var results []checkResult
+	for repoName, repoPath := range cfg.Repos {
+		expandedPath := config.ExpandPath(repoPath)
+
+		// Check if repo is accessible
+		if _, err := os.Stat(expandedPath); err != nil {
+			continue
+		}
+
+		prunable, err := git.HasPrunableWorktrees(expandedPath)
+		if err != nil {
+			continue // Skip repos we can't check
+		}
+
+		if prunable {
+			// Capture for closure
+			rp := expandedPath
+			results = append(results, checkResult{
+				name:    fmt.Sprintf("Repo: %s", repoName),
+				ok:      false,
+				warning: true,
+				message: "has stale git worktree entries (prunable)",
+				fixFunc: func() error {
+					return git.PruneWorktrees(rp)
+				},
+			})
+		}
+	}
+
+	return results
 }

@@ -172,7 +172,7 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 
 	// Create backup
 	ui.Info("Creating backup...")
-	statePath := config.StatePath(cfg)
+	statePath := config.StatePath()
 	backupPath := statePath + ".v1.backup"
 
 	// Read original state file

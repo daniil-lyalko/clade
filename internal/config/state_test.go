@@ -11,6 +11,9 @@ import (
 
 func TestLoadState_EmptyState(t *testing.T) {
 	tmpDir := t.TempDir()
+	SetTestStateDir(tmpDir)
+	defer SetTestStateDir("")
+
 	cfg := &Config{BaseDir: tmpDir}
 
 	state, err := LoadState(cfg)
@@ -27,6 +30,9 @@ func TestStateSave_FilePermissions(t *testing.T) {
 	// Critical security test: Verify state files are created with 0600 (owner-only)
 
 	tmpDir := t.TempDir()
+	SetTestStateDir(tmpDir)
+	defer SetTestStateDir("")
+
 	cfg := &Config{BaseDir: tmpDir}
 
 	state := &State{
@@ -39,7 +45,7 @@ func TestStateSave_FilePermissions(t *testing.T) {
 	err := state.Save(cfg)
 	require.NoError(t, err)
 
-	statePath := StatePath(cfg)
+	statePath := StatePath()
 	stat, err := os.Stat(statePath)
 	require.NoError(t, err)
 
@@ -234,6 +240,9 @@ func TestStateRoundTrip(t *testing.T) {
 	// Test saving and loading state preserves all data
 
 	tmpDir := t.TempDir()
+	SetTestStateDir(tmpDir)
+	defer SetTestStateDir("")
+
 	cfg := &Config{BaseDir: tmpDir}
 
 	now := time.Now()
