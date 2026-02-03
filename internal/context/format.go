@@ -166,10 +166,24 @@ func FormatContext(ctx *ContextOutput) string {
 	return sb.String()
 }
 
-// ReadCladeMetadata reads the .clade.json file from a directory
+// ReadCladeMetadata reads the metadata file from a directory.
+// Supports both new path (.clade/metadata.json) and legacy path (.clade.json).
+// Auto-migrates from legacy to new path if found.
 func ReadCladeMetadata(dir string) (*CladeMetadata, error) {
-	path := filepath.Join(dir, ".clade.json")
-	data, err := os.ReadFile(path)
+	newPath := filepath.Join(dir, ".clade", "metadata.json")
+	oldPath := filepath.Join(dir, ".clade.json")
+
+	// Try new path first
+	if data, err := os.ReadFile(newPath); err == nil {
+		var metadata CladeMetadata
+		if err := json.Unmarshal(data, &metadata); err != nil {
+			return nil, err
+		}
+		return &metadata, nil
+	}
+
+	// Try legacy path and auto-migrate if found
+	data, err := os.ReadFile(oldPath)
 	if err != nil {
 		return nil, err
 	}
@@ -177,6 +191,14 @@ func ReadCladeMetadata(dir string) (*CladeMetadata, error) {
 	var metadata CladeMetadata
 	if err := json.Unmarshal(data, &metadata); err != nil {
 		return nil, err
+	}
+
+	// Auto-migrate: move to new location
+	cladeDir := filepath.Join(dir, ".clade")
+	if err := os.MkdirAll(cladeDir, 0755); err == nil {
+		if err := os.Rename(oldPath, newPath); err == nil {
+			// Migration successful - silently continue
+		}
 	}
 
 	return &metadata, nil

@@ -100,25 +100,61 @@ clade status                   # Show context for current dir
 | Flag | Description |
 |------|-------------|
 | `-t`, `--type` | Type/prefix (spike, feature, bug, chore, hotfix, docs) |
+| `-f`, `--from` | Base branch to create from (default: main/master) |
 | `-r`, `--repo` | Use specific repo |
+| `-b`, `--branch` | Custom branch name (override default) |
 | `-p`, `--pick` | Force repo picker |
 | `--no-agent` | Skip launching agent |
 | `-o`, `--open` | Open editor (cursor, code, nvim) |
+
+### Advanced Usage
+
+Combine flags for complex workflows:
+
+```bash
+# Branch from develop instead of main
+clade PROJ-123 -t feature -f develop
+
+# Full example: spike from develop in specific repo
+clade DEVOPS-5700-research -t spike -f develop -r my-api
+
+# Custom branch name (ignore type prefix)
+clade foo -b custom/branch-name
+
+# Create worktree but open in different editor
+clade foo -t feature -o code
+
+# Dry run to preview without creating
+clade foo -t spike --dry-run
+```
 
 ## How It Works
 
 When you run `clade init`, it creates hook configurations:
 
 ```
-.claude/settings.json    # Claude Code hook
-.cursor/hooks.json       # Cursor hook
-.claude/commands/drop.md # /drop command for session notes
+.claude/settings.json       # Claude Code SessionStart hook
+.claude/commands/drop.md    # /drop command for Claude Code
+.cursor/hooks.json          # Cursor sessionStart hook
+.cursor/commands/drop.md    # /drop command for Cursor
+.clade/hooks.yaml.example   # Template for lifecycle hooks
+.gitignore                  # Auto-updated with .clade/ entries
 ```
 
 On session start, the hook injects:
-- **Previous session notes** (DROPBAG.md) with staleness warnings
+- **Previous session notes** (from `.clade/dropbags/`) with staleness warnings
 - **Git status** and recent commits
 - **Open TODOs** in code
+
+> **Note**: If clade isn't installed, hooks fail silently and sessions continue normally.
+> Team members without clade can still work in the repo.
+
+### The `/drop` Command
+
+Before stopping work, run `/drop` in Claude Code or Cursor:
+1. Creates timestamped file in `.clade/dropbags/DROPBAG-YYYY-MM-DD-HHMM.md`
+2. Auto-injected on next `clade resume` with staleness warnings (>2 days old)
+3. Full session history preserved for reference
 
 ## Configuration
 

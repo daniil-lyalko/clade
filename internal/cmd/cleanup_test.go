@@ -33,9 +33,9 @@ func TestArchiveDropbags(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create .clade.json
-	cladeJSON := filepath.Join(tmpDir, ".clade.json")
-	if err := os.WriteFile(cladeJSON, []byte(`{"name":"test-wt","label":"spike"}`), 0644); err != nil {
+	// Create .clade/metadata.json (new path)
+	metadataPath := filepath.Join(tmpDir, ".clade", "metadata.json")
+	if err := os.WriteFile(metadataPath, []byte(`{"name":"test-wt","label":"spike"}`), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -71,7 +71,7 @@ func TestArchiveDropbags(t *testing.T) {
 			foundDropbag1 = true
 		case "DROPBAG-20240116-0900.md":
 			foundDropbag2 = true
-		case ".clade.json":
+		case "metadata.json":
 			foundCladeJSON = true
 		}
 	}
@@ -83,7 +83,7 @@ func TestArchiveDropbags(t *testing.T) {
 		t.Error("DROPBAG-20240116-0900.md not found in archive")
 	}
 	if !foundCladeJSON {
-		t.Error(".clade.json not found in archive")
+		t.Error("metadata.json not found in archive")
 	}
 
 	// Verify content was copied correctly

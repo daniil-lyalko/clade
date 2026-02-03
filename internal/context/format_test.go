@@ -17,7 +17,7 @@ func TestFormatContext_TicketMdPathResolution(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	// Create .clade.json with ticket
+	// Create .clade/metadata.json with ticket (new path)
 	cladeJSON := fmt.Sprintf(`{
 		"type": "worktree",
 		"name": "test-bug",
@@ -26,7 +26,9 @@ func TestFormatContext_TicketMdPathResolution(t *testing.T) {
 		"created": "%s"
 	}`, time.Now().Format(time.RFC3339))
 
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".clade.json"), []byte(cladeJSON), 0644))
+	cladeDir := filepath.Join(tmpDir, ".clade")
+	require.NoError(t, os.MkdirAll(cladeDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(cladeDir, "metadata.json"), []byte(cladeJSON), 0644))
 
 	// Test case 1: TICKET.md exists in worktree
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "TICKET.md"), []byte("Ticket details"), 0644))
@@ -159,7 +161,10 @@ func TestReadCladeMetadata_Valid(t *testing.T) {
 		"created": "2026-01-26T10:00:00Z"
 	}`
 
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".clade.json"), []byte(metadataJSON), 0644))
+	// Use new path: .clade/metadata.json
+	cladeDir := filepath.Join(tmpDir, ".clade")
+	require.NoError(t, os.MkdirAll(cladeDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(cladeDir, "metadata.json"), []byte(metadataJSON), 0644))
 
 	metadata, err := ReadCladeMetadata(tmpDir)
 
@@ -168,6 +173,33 @@ func TestReadCladeMetadata_Valid(t *testing.T) {
 	assert.Equal(t, "test-feature", metadata.Name)
 	assert.Equal(t, "PROJ-999", metadata.Ticket)
 	assert.Equal(t, "my-repo", metadata.Repo)
+}
+
+func TestReadCladeMetadata_LegacyMigration(t *testing.T) {
+	// Test auto-migration from legacy .clade.json to .clade/metadata.json
+	tmpDir := t.TempDir()
+
+	metadataJSON := `{
+		"type": "worktree",
+		"name": "legacy-test",
+		"ticket": "PROJ-123",
+		"repo": "old-repo",
+		"created": "2026-01-20T10:00:00Z"
+	}`
+
+	// Write to legacy path
+	legacyPath := filepath.Join(tmpDir, ".clade.json")
+	require.NoError(t, os.WriteFile(legacyPath, []byte(metadataJSON), 0644))
+
+	// Read should work and auto-migrate
+	metadata, err := ReadCladeMetadata(tmpDir)
+	require.NoError(t, err)
+	assert.Equal(t, "legacy-test", metadata.Name)
+
+	// Verify migration happened
+	newPath := filepath.Join(tmpDir, ".clade", "metadata.json")
+	assert.FileExists(t, newPath, "metadata.json should exist after migration")
+	assert.NoFileExists(t, legacyPath, ".clade.json should be removed after migration")
 }
 
 func TestReadCladeMetadata_NotFound(t *testing.T) {

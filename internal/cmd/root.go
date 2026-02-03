@@ -80,6 +80,7 @@ func init() {
 	rootCmd.Flags().StringVarP(&workRepoFlag, "repo", "r", "", "Repository path or registered name")
 	rootCmd.Flags().BoolVarP(&workPickFlag, "pick", "p", false, "Force repo picker")
 	rootCmd.Flags().StringVarP(&workBranchFlag, "branch", "b", "", "Custom branch name")
+	rootCmd.Flags().StringVarP(&workFromFlag, "from", "f", "", "Base branch to create from (default: origin's default branch)")
 	rootCmd.Flags().BoolVar(&workDryRunFlag, "dry-run", false, "Preview what would be created without making changes")
 }
 
@@ -654,6 +655,7 @@ func runInteractiveNew(cfg *config.Config) error {
 		BranchPrefix: branchPrefix,
 	}, WorktreeOptions{
 		RepoFlag:     repoName, // Use the selected repo
+		FromFlag:     workFromFlag,
 		EditorFlag:   workEditorFlag,
 		AgentFlag:    workAgentFlag,
 		NoAgentFlag:  workNoAgentFlag,

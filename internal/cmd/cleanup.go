@@ -648,12 +648,19 @@ func archiveDropbags(wtPath, repoName, wtName string) (string, error) {
 		}
 	}
 
-	// Copy .clade.json metadata if it exists
-	cladeJSON := filepath.Join(wtPath, ".clade.json")
-	if _, err := os.Stat(cladeJSON); err == nil {
-		dst := filepath.Join(archiveDir, ".clade.json")
-		if err := copyFile(cladeJSON, dst); err != nil {
-			ui.Warn("Failed to archive .clade.json: %v", err)
+	// Copy metadata.json if it exists (try new path first, then legacy)
+	newMetadataPath := filepath.Join(wtPath, ".clade", "metadata.json")
+	oldMetadataPath := filepath.Join(wtPath, ".clade.json")
+	var metadataSrc string
+	if _, err := os.Stat(newMetadataPath); err == nil {
+		metadataSrc = newMetadataPath
+	} else if _, err := os.Stat(oldMetadataPath); err == nil {
+		metadataSrc = oldMetadataPath
+	}
+	if metadataSrc != "" {
+		dst := filepath.Join(archiveDir, "metadata.json")
+		if err := copyFile(metadataSrc, dst); err != nil {
+			ui.Warn("Failed to archive metadata.json: %v", err)
 		}
 	}
 

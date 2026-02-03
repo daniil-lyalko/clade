@@ -271,6 +271,11 @@ func resumeTrackedExperiment(cfg *config.Config, state *config.State, exp *confi
 		return fmt.Errorf("worktree not found")
 	}
 
+	// Ensure agent config files exist (auto-upgrade existing worktrees with new features)
+	if err := EnsureAgentConfig(exp.Path); err != nil {
+		ui.Warn("Failed to ensure agent config: %v", err)
+	}
+
 	// Check for divergence if remote exists
 	git.Fetch(exp.Repo)
 	branchInfo := git.CheckBranch(exp.Repo, exp.Branch)
@@ -631,6 +636,11 @@ func resumeTrackedScratch(cfg *config.Config, state *config.State, scratch *conf
 		ui.Detail("The scratch folder may have been removed manually")
 		ui.Detail("Run: clade cleanup %s", scratch.Name)
 		return fmt.Errorf("scratch folder not found")
+	}
+
+	// Ensure agent config files exist (auto-upgrade existing scratches with new features)
+	if err := EnsureAgentConfig(scratch.Path); err != nil {
+		ui.Warn("Failed to ensure agent config: %v", err)
 	}
 
 	// Update last used

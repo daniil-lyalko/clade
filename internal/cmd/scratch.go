@@ -115,7 +115,7 @@ func runScratch(cmd *cobra.Command, args []string) error {
 		ui.Warn("Failed to initialize .claude/: %v", err)
 	}
 
-	// Create .clade.json metadata
+	// Create .clade/metadata.json
 	ticket := extractTicketFromName(scratchName)
 	cladeMetadata := map[string]interface{}{
 		"type":    "scratch",
@@ -123,8 +123,12 @@ func runScratch(cmd *cobra.Command, args []string) error {
 		"ticket":  ticket,
 		"created": time.Now().Format(time.RFC3339),
 	}
-	if err := util.WriteJSON(filepath.Join(scratchPath, ".clade.json"), cladeMetadata); err != nil {
-		ui.Warn("Failed to write .clade.json: %v", err)
+	metadataPath := filepath.Join(scratchPath, ".clade", "metadata.json")
+	if err := os.MkdirAll(filepath.Dir(metadataPath), 0755); err != nil {
+		ui.Warn("Failed to create .clade directory: %v", err)
+	}
+	if err := util.WriteJSON(metadataPath, cladeMetadata); err != nil {
+		ui.Warn("Failed to write metadata.json: %v", err)
 	}
 
 	// Update state
@@ -213,14 +217,21 @@ func initScratchConfig(scratchPath string) error {
 		}
 	}
 
-	// Cursor hooks
+	// Cursor hooks and commands
 	cursorDir := filepath.Join(scratchPath, ".cursor")
-	if err := os.MkdirAll(cursorDir, 0755); err != nil {
+	cursorCommandsDir := filepath.Join(cursorDir, "commands")
+	if err := os.MkdirAll(cursorCommandsDir, 0755); err != nil {
 		return err
 	}
 	cursorHooksPath := filepath.Join(cursorDir, "hooks.json")
 	if _, err := os.Stat(cursorHooksPath); os.IsNotExist(err) {
 		if err := writeCursorHooksJSON(cursorHooksPath); err != nil {
+			return err
+		}
+	}
+	cursorDropPath := filepath.Join(cursorCommandsDir, "drop.md")
+	if _, err := os.Stat(cursorDropPath); os.IsNotExist(err) {
+		if err := writeCursorDropCommand(cursorDropPath); err != nil {
 			return err
 		}
 	}

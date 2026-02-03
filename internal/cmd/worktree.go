@@ -196,7 +196,7 @@ func CreateWorktree(name string, wtCfg WorktreeConfig, opts WorktreeOptions) err
 		}
 	}
 
-	// Create .clade.json metadata
+	// Create .clade/metadata.json
 	ticket := util.ExtractTicket(name)
 	cladeMetadata := map[string]interface{}{
 		"type":    wtCfg.Label,
@@ -206,8 +206,12 @@ func CreateWorktree(name string, wtCfg WorktreeConfig, opts WorktreeOptions) err
 		"branch":  branch,
 		"created": time.Now().Format(time.RFC3339),
 	}
-	if err := util.WriteJSON(filepath.Join(wtPath, ".clade.json"), cladeMetadata); err != nil {
-		ui.Warn("Failed to write .clade.json: %v", err)
+	metadataPath := filepath.Join(wtPath, ".clade", "metadata.json")
+	if err := os.MkdirAll(filepath.Dir(metadataPath), 0755); err != nil {
+		ui.Warn("Failed to create .clade directory: %v", err)
+	}
+	if err := util.WriteJSON(metadataPath, cladeMetadata); err != nil {
+		ui.Warn("Failed to write metadata.json: %v", err)
 	}
 
 	// Update state (v2 format)
@@ -303,6 +307,11 @@ func ResumeWorktree(cfg *config.Config, state *config.State, repoName string, wt
 		ui.Detail("The worktree may have been removed manually")
 		ui.Detail("Run: clade cleanup %s", wt.Name)
 		return fmt.Errorf("worktree not found")
+	}
+
+	// Ensure agent config files exist (auto-upgrade existing worktrees with new features)
+	if err := EnsureAgentConfig(wtPath); err != nil {
+		ui.Warn("Failed to ensure agent config: %v", err)
 	}
 
 	// Check for divergence if remote exists

@@ -63,8 +63,11 @@ func resolveRepo(cfg *config.Config, repoFlag string) (string, error) {
 				return "", err
 			}
 
-			// Try to get context from .clade.json if it exists
-			cladeFile := filepath.Join(cwd, ".clade.json")
+			// Try to get context from .clade/metadata.json (or legacy .clade.json)
+			cladeFile := filepath.Join(cwd, ".clade", "metadata.json")
+			if _, statErr := os.Stat(cladeFile); os.IsNotExist(statErr) {
+				cladeFile = filepath.Join(cwd, ".clade.json") // Fallback to legacy path
+			}
 			if data, err := os.ReadFile(cladeFile); err == nil {
 				var meta map[string]interface{}
 				if json.Unmarshal(data, &meta) == nil {
@@ -83,7 +86,7 @@ func resolveRepo(cfg *config.Config, repoFlag string) (string, error) {
 					}
 				}
 			} else {
-				// No .clade.json, just show basic message
+				// No metadata file, just show basic message
 				ui.Info("In worktree, using main repo: %s", git.GetRepoName(mainRepo))
 			}
 

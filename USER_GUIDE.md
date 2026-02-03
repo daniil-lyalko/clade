@@ -262,7 +262,10 @@ Cursor may also read `.claude/settings.json`. Clade handles this - if both hooks
 |       +-- DROPBAG-2026-01-25-0915.md      # Previous session
 +-- .cursor/
 |   +-- hooks.json                          # Cursor IDE hooks
-+-- .clade.json                             # Clade metadata (ticket, label, etc.)
+|   +-- commands/
+|       +-- drop.md                         # /drop command for Cursor
++-- .clade/
+|   +-- metadata.json                       # Clade metadata (ticket, label, etc.)
 +-- CLAUDE.md                               # Project context
 ```
 
@@ -330,9 +333,16 @@ clade init
 +-- commands/
     +-- drop.md           # /drop command
 
+.cursor/
++-- hooks.json            # sessionStart hook
++-- commands/
+    +-- drop.md           # /drop command
+
+.clade/
++-- hooks.yaml.example    # Template for lifecycle hooks
+
 # Also appends to .gitignore:
-DROPBAG.md
-.clade.json
+.clade/
 ```
 
 ---
@@ -846,7 +856,7 @@ To copy additional files beyond the defaults, add them to your config:
 
 **`~/clade/state.json`** tracks all worktrees, projects, and scratches. See [ARCHITECTURE.md](ARCHITECTURE.md) for the v2 format specification.
 
-**`.clade.json`** (per-worktree) stores metadata about the worktree:
+**`.clade/metadata.json`** (per-worktree) stores metadata about the worktree:
 
 ```json
 {
@@ -855,9 +865,12 @@ To copy additional files beyond the defaults, add them to your config:
   "name": "PROJ-1234",
   "ticket": "PROJ-1234",
   "repo": "my-api",
+  "branch": "fix/PROJ-1234",
   "created": "2025-01-03T09:00:00Z"
 }
 ```
+
+> **Migration note**: Legacy `.clade.json` files are automatically migrated to `.clade/metadata.json` on first access.
 
 ---
 

@@ -231,9 +231,16 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 		key := config.ExperimentKey(p.exp.Repo, p.exp.Name)
 		state.RemoveExperiment(key)
 
-		// Update .clade.json in the moved folder
-		cladeJSONPath := filepath.Join(p.newPath, ".clade.json")
-		updateCladeJSON(cladeJSONPath, p.label)
+		// Update metadata file in the moved folder (check both new and legacy paths)
+		newMetadataPath := filepath.Join(p.newPath, ".clade", "metadata.json")
+		oldMetadataPath := filepath.Join(p.newPath, ".clade.json")
+		if _, err := os.Stat(oldMetadataPath); err == nil {
+			// Migrate legacy .clade.json to new location
+			if err := os.MkdirAll(filepath.Dir(newMetadataPath), 0755); err == nil {
+				os.Rename(oldMetadataPath, newMetadataPath)
+			}
+		}
+		updateCladeJSON(newMetadataPath, p.label)
 
 		ui.Success("Migrated %s → %s", p.exp.Name, p.newPath)
 		successCount++
@@ -290,7 +297,7 @@ func inferLabelFromBranch(branch string) string {
 	return "spike"
 }
 
-// updateCladeJSON updates the .clade.json file with label information
+// updateCladeJSON updates the metadata file with label information
 func updateCladeJSON(path string, label string) {
 	// Read existing file
 	data, err := os.ReadFile(path)

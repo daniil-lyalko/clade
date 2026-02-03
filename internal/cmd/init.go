@@ -22,7 +22,9 @@ var initCmd = &cobra.Command{
 This creates:
   - .claude/settings.json with SessionStart hook
   - .claude/commands/drop.md for the /drop command
-  - Appends DROPBAG.md and .clade.json to .gitignore
+  - .cursor/hooks.json for Cursor IDE
+  - .cursor/commands/drop.md for the /drop command in Cursor
+  - Appends .clade/ to .gitignore
 
 Run this in any git repository to enable context injection.`,
 	RunE: runInit,
@@ -81,10 +83,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to write drop.md: %w", err)
 	}
 
-	// Write Cursor hooks.json
+	// Write Cursor hooks.json and commands/drop.md
 	cursorDir := filepath.Join(repoRoot, ".cursor")
-	if err := os.MkdirAll(cursorDir, 0755); err != nil {
-		ui.Warn("Failed to create .cursor/: %v", err)
+	cursorCommandsDir := filepath.Join(cursorDir, "commands")
+	if err := os.MkdirAll(cursorCommandsDir, 0755); err != nil {
+		ui.Warn("Failed to create .cursor/commands/: %v", err)
 	} else {
 		cursorHooksPath := filepath.Join(cursorDir, "hooks.json")
 		// Only write if it doesn't exist or force flag is set
@@ -92,6 +95,28 @@ func runInit(cmd *cobra.Command, args []string) error {
 			ui.Info("Creating .cursor/hooks.json...")
 			if err := writeCursorHooksJSON(cursorHooksPath); err != nil {
 				ui.Warn("Failed to write .cursor/hooks.json: %v", err)
+			}
+		}
+		// Write Cursor drop command
+		cursorDropPath := filepath.Join(cursorCommandsDir, "drop.md")
+		if _, err := os.Stat(cursorDropPath); os.IsNotExist(err) || initForceFlag {
+			ui.Info("Creating .cursor/commands/drop.md...")
+			if err := writeCursorDropCommand(cursorDropPath); err != nil {
+				ui.Warn("Failed to write .cursor/commands/drop.md: %v", err)
+			}
+		}
+	}
+
+	// Write hooks.yaml.example template
+	cladeDir := filepath.Join(repoRoot, ".clade")
+	if err := os.MkdirAll(cladeDir, 0755); err != nil {
+		ui.Warn("Failed to create .clade/: %v", err)
+	} else {
+		hooksExamplePath := filepath.Join(cladeDir, "hooks.yaml.example")
+		if _, err := os.Stat(hooksExamplePath); os.IsNotExist(err) || initForceFlag {
+			ui.Info("Creating .clade/hooks.yaml.example...")
+			if err := writeHooksExample(hooksExamplePath); err != nil {
+				ui.Warn("Failed to write hooks.yaml.example: %v", err)
 			}
 		}
 	}
@@ -146,26 +171,26 @@ func writeCursorHooksJSON(path string) error {
 	return os.WriteFile(path, []byte(content), 0644)
 }
 
-func writeDropCommand(path string) error {
-	content := `Create a timestamped session summary in .clade/dropbags/:
+// dropCommandContent is the shared content for /drop command (same for Claude Code and Cursor)
+const dropCommandContent = `Create a timestamped session summary in .clade/dropbags/:
 
 1. Create directory if needed:
-   ` + "```bash" + `
+` + "   ```bash" + `
    mkdir -p .clade/dropbags
-   ` + "```" + `
+` + "   ```" + `
 
 2. Optionally read the most recent DROPBAG for continuity:
-   ` + "```bash" + `
+` + "   ```bash" + `
    ls -t .clade/dropbags/DROPBAG-*.md 2>/dev/null | head -1
-   ` + "```" + `
+` + "   ```" + `
 
 3. Write new timestamped file:
-   ` + "```bash" + `
+` + "   ```bash" + `
    TIMESTAMP=$(date +%Y-%m-%d-%H%M)
    cat > .clade/dropbags/DROPBAG-$TIMESTAMP.md <<'EOF'
    [your content here]
    EOF
-   ` + "```" + `
+` + "   ```" + `
 
 The new file should contain:
 
@@ -188,13 +213,49 @@ Anything unresolved or decisions that need to be made.
 
 After saving, confirm the timestamped file was created successfully.
 `
-	return os.WriteFile(path, []byte(content), 0644)
+
+func writeDropCommand(path string) error {
+	return os.WriteFile(path, []byte(dropCommandContent), 0644)
+}
+
+func writeCursorDropCommand(path string) error {
+	// Cursor uses the same markdown format as Claude Code for custom commands
+	return os.WriteFile(path, []byte(dropCommandContent), 0644)
+}
+
+// hooksExampleContent is the template for hooks.yaml.example
+const hooksExampleContent = `# Clade Lifecycle Hooks
+# Rename to hooks.yaml to activate
+# See USER_GUIDE.md for details
+
+hooks:
+  # Runs after creating a new worktree
+  on_create:
+    # - npm install
+    # - cp .env.example .env
+    # - echo "Created $CLADE_NAME"
+
+  # Runs when resuming a worktree
+  on_resume:
+    # - direnv allow
+    # - echo "Resumed at $(date)"
+
+  # Runs before removing a worktree
+  on_remove:
+    # - echo "Cleaning up $CLADE_NAME"
+
+# Available environment variables:
+# CLADE_TYPE, CLADE_NAME, CLADE_PATH, CLADE_REPO_NAME,
+# CLADE_REPO_PATH, CLADE_BRANCH, CLADE_TICKET, CLADE_PROJECT_NAME
+`
+
+func writeHooksExample(path string) error {
+	return os.WriteFile(path, []byte(hooksExampleContent), 0644)
 }
 
 func updateGitignore(path string) error {
 	linesToAdd := []string{
 		".clade/",
-		".clade.json",
 	}
 
 	// Read existing content
@@ -290,11 +351,16 @@ func InitRepo(repoPath string) error {
 
 	// Cursor config
 	cursorDir := filepath.Join(repoPath, ".cursor")
-	if err := os.MkdirAll(cursorDir, 0755); err != nil {
+	cursorCommandsDir := filepath.Join(cursorDir, "commands")
+	if err := os.MkdirAll(cursorCommandsDir, 0755); err != nil {
 		return err
 	}
 	cursorHooksPath := filepath.Join(cursorDir, "hooks.json")
 	if err := writeCursorHooksJSON(cursorHooksPath); err != nil {
+		return err
+	}
+	cursorDropPath := filepath.Join(cursorCommandsDir, "drop.md")
+	if err := writeCursorDropCommand(cursorDropPath); err != nil {
 		return err
 	}
 
@@ -329,13 +395,21 @@ func EnsureAgentConfig(repoPath string) error {
 
 	// Ensure .cursor/ config
 	cursorDir := filepath.Join(repoPath, ".cursor")
-	if err := os.MkdirAll(cursorDir, 0755); err != nil {
+	cursorCommandsDir := filepath.Join(cursorDir, "commands")
+	if err := os.MkdirAll(cursorCommandsDir, 0755); err != nil {
 		return err
 	}
 
 	cursorHooksPath := filepath.Join(cursorDir, "hooks.json")
 	if _, err := os.Stat(cursorHooksPath); os.IsNotExist(err) {
 		if err := writeCursorHooksJSON(cursorHooksPath); err != nil {
+			return err
+		}
+	}
+
+	cursorDropPath := filepath.Join(cursorCommandsDir, "drop.md")
+	if _, err := os.Stat(cursorDropPath); os.IsNotExist(err) {
+		if err := writeCursorDropCommand(cursorDropPath); err != nil {
 			return err
 		}
 	}
