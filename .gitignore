@@ -1,5 +1,5 @@
-# Binary
-pacer
+# Binary (root only, not cmd/pacer/)
+/pacer
 
 # Go
 *.exe
