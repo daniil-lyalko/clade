@@ -368,8 +368,18 @@ func InitRepo(repoPath string) error {
 	return updateGitignore(gitignorePath)
 }
 
+// needsCladeToPacerMigration checks if a file contains "clade" references that need updating to "pacer"
+func needsCladeToPacerMigration(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(data), "clade inject-context")
+}
+
 // EnsureAgentConfig ensures required .claude and .cursor files exist.
 // This is called AFTER copying config dirs from source to handle partial configs.
+// It also migrates old "clade" references to "pacer" if found.
 func EnsureAgentConfig(repoPath string) error {
 	// Ensure .claude/ config
 	claudeDir := filepath.Join(repoPath, ".claude")
@@ -379,8 +389,13 @@ func EnsureAgentConfig(repoPath string) error {
 		return err
 	}
 
+	// Check if settings.json needs migration or creation
 	settingsPath := filepath.Join(claudeDir, "settings.json")
-	if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
+	if needsCladeToPacerMigration(settingsPath) {
+		if err := writeSettingsJSON(settingsPath); err != nil {
+			return err
+		}
+	} else if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
 		if err := writeSettingsJSON(settingsPath); err != nil {
 			return err
 		}
@@ -400,8 +415,13 @@ func EnsureAgentConfig(repoPath string) error {
 		return err
 	}
 
+	// Check if hooks.json needs migration or creation
 	cursorHooksPath := filepath.Join(cursorDir, "hooks.json")
-	if _, err := os.Stat(cursorHooksPath); os.IsNotExist(err) {
+	if needsCladeToPacerMigration(cursorHooksPath) {
+		if err := writeCursorHooksJSON(cursorHooksPath); err != nil {
+			return err
+		}
+	} else if _, err := os.Stat(cursorHooksPath); os.IsNotExist(err) {
 		if err := writeCursorHooksJSON(cursorHooksPath); err != nil {
 			return err
 		}
