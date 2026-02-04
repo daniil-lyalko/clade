@@ -85,6 +85,10 @@ pacer list                     # See all worktrees
 pacer resume foo               # Resume with context
 pacer cleanup foo              # Clean up (archives session)
 
+# Scratch folders (no git)
+pacer scratch doc-review       # Create scratch for documents/analysis
+pacer scratch PROJ-1234        # Ticket investigation without code
+
 # Repo management
 pacer repo add ~/repos/my-api  # Register a repo
 pacer repo list                # Show registered repos
@@ -104,8 +108,9 @@ pacer status                   # Show context for current dir
 | `-r`, `--repo` | Use specific repo |
 | `-b`, `--branch` | Custom branch name (override default) |
 | `-p`, `--pick` | Force repo picker |
-| `--no-agent` | Skip launching agent |
 | `-o`, `--open` | Open editor (cursor, code, nvim) |
+| `--no-agent` | Skip launching agent |
+| `--dry-run` | Preview what would be created without making changes |
 
 ### Advanced Usage
 

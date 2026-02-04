@@ -26,6 +26,10 @@ pacer foo -t spike                # Branch: spike/foo (throwaway)
 pacer foo -t feature              # Branch: feat/foo (to merge)
 pacer foo -t bug                  # Branch: fix/foo (bug fix)
 
+# Scratch folders (no git)
+pacer scratch doc-review          # Document analysis workspace
+pacer scratch PROJ-1234           # Ticket investigation
+
 # Manage work
 pacer list                        # What's active
 pacer resume foo                  # Get back to work
@@ -46,6 +50,7 @@ pacer foo -p                      # Force repo picker
 pacer foo -r my-api               # Use specific repo
 pacer foo -o cursor               # Open in Cursor IDE
 pacer foo --no-agent              # Skip launching agent
+pacer foo --dry-run               # Preview without creating
 pacer --verbose list              # Enable debug output
 ```
 
