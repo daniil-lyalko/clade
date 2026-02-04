@@ -71,7 +71,7 @@ brews:
       owner: daniil-lyalko
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-      directory: Formula
+    directory: Formula
     homepage: https://github.com/daniil-lyalko/pacer
     description: Git worktree manager with AI coding session context
     license: MIT
