@@ -169,6 +169,36 @@ Before stopping work, run `/drop` in Claude Code or Cursor:
 }
 ```
 
+## Shell Completions
+
+Homebrew installs completions automatically. For manual installs:
+
+<details>
+<summary>Zsh</summary>
+
+```bash
+echo 'source <(pacer completion zsh)' >> ~/.zshrc
+source ~/.zshrc
+```
+</details>
+
+<details>
+<summary>Bash</summary>
+
+```bash
+echo 'source <(pacer completion bash)' >> ~/.bashrc
+source ~/.bashrc
+```
+</details>
+
+<details>
+<summary>Fish</summary>
+
+```bash
+pacer completion fish > ~/.config/fish/completions/pacer.fish
+```
+</details>
+
 ## Documentation
 
 | Document | Description |
