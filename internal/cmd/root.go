@@ -915,6 +915,10 @@ func checkAndMigrateFromClade() {
 	if migrated {
 		// Update paths in config and state files
 		updatePathsInConfigFiles(oldDataDir, newDataDir, newConfigDir)
+
+		// Repair git worktree links (paths changed from ~/clade to ~/pacer)
+		repairWorktreesAfterMigration(newDataDir, newConfigDir)
+
 		ui.Info("Migration complete!")
 		fmt.Println()
 	}
@@ -946,6 +950,72 @@ func updatePathsInConfigFiles(oldDataDir, newDataDir, configDir string) {
 				}
 			}
 		}
+	}
+}
+
+// repairWorktreesAfterMigration repairs git worktree links after directory rename
+// This fixes the issue where git still references old ~/clade/ paths
+func repairWorktreesAfterMigration(newDataDir, configDir string) {
+	// Load config to get registered repos
+	cfg, err := config.Load()
+	if err != nil {
+		return // Can't load config, skip repair
+	}
+
+	reposDir := filepath.Join(newDataDir, "repos")
+	projectsDir := filepath.Join(newDataDir, "projects")
+
+	repaired := 0
+
+	// Repair worktrees for each registered repo
+	for repoName, repoPath := range cfg.Repos {
+		// Find worktree directories under ~/pacer/repos/<repo>/
+		repoWorktreesDir := filepath.Join(reposDir, repoName)
+		if dirExists(repoWorktreesDir) {
+			entries, err := os.ReadDir(repoWorktreesDir)
+			if err == nil {
+				var worktreePaths []string
+				for _, entry := range entries {
+					if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
+						worktreePaths = append(worktreePaths, filepath.Join(repoWorktreesDir, entry.Name()))
+					}
+				}
+				if len(worktreePaths) > 0 {
+					if err := git.RepairWorktrees(repoPath, worktreePaths...); err == nil {
+						repaired += len(worktreePaths)
+					}
+				}
+			}
+		}
+	}
+
+	// Also repair project worktrees
+	if dirExists(projectsDir) {
+		projects, _ := os.ReadDir(projectsDir)
+		for _, proj := range projects {
+			if !proj.IsDir() {
+				continue
+			}
+			projPath := filepath.Join(projectsDir, proj.Name())
+			// Each subdirectory in a project is a repo worktree
+			entries, _ := os.ReadDir(projPath)
+			for _, entry := range entries {
+				if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+					continue
+				}
+				worktreePath := filepath.Join(projPath, entry.Name())
+				// Find the source repo for this worktree
+				if repoPath, ok := cfg.Repos[entry.Name()]; ok {
+					if err := git.RepairWorktrees(repoPath, worktreePath); err == nil {
+						repaired++
+					}
+				}
+			}
+		}
+	}
+
+	if repaired > 0 {
+		ui.Detail("Repaired %d git worktree links", repaired)
 	}
 }
 

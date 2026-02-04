@@ -271,3 +271,21 @@ func HasPrunableWorktrees(repoPath string) (bool, error) {
 	// Output is non-empty if there are prunable entries
 	return len(strings.TrimSpace(string(output))) > 0, nil
 }
+
+// RepairWorktrees repairs worktree links after directories have been moved/renamed.
+// If worktreePaths are provided, repairs those specific paths.
+// If no paths provided, attempts to repair all worktrees from the main repo.
+func RepairWorktrees(repoPath string, worktreePaths ...string) error {
+	args := []string{"worktree", "repair"}
+	args = append(args, worktreePaths...)
+
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repoPath
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// Repair can fail on individual paths but still fix others
+		// Don't treat as fatal error, just log
+		return fmt.Errorf("worktree repair: %s", strings.TrimSpace(string(output)))
+	}
+	return nil
+}
