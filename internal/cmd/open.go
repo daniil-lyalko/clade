@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/daniil-lyalko/clade/internal/config"
+	"github.com/daniil-lyalko/pacer/internal/config"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
@@ -16,11 +16,11 @@ var openCmd = &cobra.Command{
 	Long: `Print the path to a worktree for use with cd.
 
 Examples:
-  cd $(clade open try-redis)
-  cd $(clade open)              # Interactive picker
+  cd $(pacer open try-redis)
+  cd $(pacer open)              # Interactive picker
 
 Tip: Add a shell alias for convenience:
-  alias cdo='cd $(clade open)'`,
+  alias cdo='cd $(pacer open)'`,
 	Args:              cobra.MaximumNArgs(1),
 	RunE:              runOpen,
 	ValidArgsFunction: completeResumableNames,

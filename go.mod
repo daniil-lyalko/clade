@@ -1,4 +1,4 @@
-module github.com/daniil-lyalko/clade
+module github.com/daniil-lyalko/pacer
 
 go 1.22
 

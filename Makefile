@@ -1,12 +1,12 @@
 .PHONY: build install reinstall clean test
 
-BINARY=clade
+BINARY=pacer
 INSTALL_DIR=$(HOME)/.local/bin
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-LDFLAGS=-ldflags "-X github.com/daniil-lyalko/clade/internal/cmd.Version=$(VERSION)"
+LDFLAGS=-ldflags "-X github.com/daniil-lyalko/pacer/internal/cmd.Version=$(VERSION)"
 
 build:
-	go build $(LDFLAGS) -o $(BINARY) ./cmd/clade
+	go build $(LDFLAGS) -o $(BINARY) ./cmd/pacer
 
 install: build
 	mkdir -p $(INSTALL_DIR)
@@ -47,7 +47,7 @@ coverage-check:
 
 # Development helpers
 run:
-	go run ./cmd/clade $(ARGS)
+	go run ./cmd/pacer $(ARGS)
 
 fmt:
 	go fmt ./...
@@ -59,12 +59,12 @@ lint:
 install-completions:
 	@echo "Installing zsh completions..."
 	@if command -v brew >/dev/null 2>&1; then \
-		$(INSTALL_DIR)/$(BINARY) completion zsh > $$(brew --prefix)/share/zsh/site-functions/_clade && \
+		$(INSTALL_DIR)/$(BINARY) completion zsh > $$(brew --prefix)/share/zsh/site-functions/_pacer && \
 		echo "✓ Installed to Homebrew site-functions" && \
 		echo "  Reload shell: exec zsh"; \
 	else \
 		mkdir -p ~/.zsh/completions && \
-		$(INSTALL_DIR)/$(BINARY) completion zsh > ~/.zsh/completions/_clade && \
+		$(INSTALL_DIR)/$(BINARY) completion zsh > ~/.zsh/completions/_pacer && \
 		echo "✓ Installed to ~/.zsh/completions" && \
 		echo "  Add to ~/.zshrc if not present: fpath=(~/.zsh/completions \$$fpath)" && \
 		echo "  Reload shell: exec zsh"; \

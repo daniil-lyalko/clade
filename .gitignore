@@ -1,5 +1,5 @@
 # Binary
-clade
+pacer
 
 # Go
 *.exe
@@ -26,6 +26,6 @@ debug
 *.log
 ideas/
 
-# Clade
-.clade/
-.clade.json
+# Pacer
+.pacer/
+.pacer.json

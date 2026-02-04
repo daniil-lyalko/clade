@@ -14,7 +14,7 @@ func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
 	assert.NotEmpty(t, cfg.BaseDir)
-	assert.Contains(t, cfg.BaseDir, "clade")
+	assert.Contains(t, cfg.BaseDir, "pacer")
 	assert.True(t, cfg.AutoInit)
 	assert.Empty(t, cfg.Agent) // Should be set by wizard, not hardcoded
 	assert.Empty(t, cfg.AgentFlags) // Should NOT contain dangerous flags
@@ -116,8 +116,8 @@ func TestExpandPath_TildeExpansion(t *testing.T) {
 	}{
 		{
 			name:     "Tilde at start",
-			input:    "~/clade",
-			contains: "/clade",
+			input:    "~/pacer",
+			contains: "/pacer",
 		},
 		{
 			name:     "Tilde home directory",
@@ -150,21 +150,21 @@ func TestExpandPath_TildeExpansion(t *testing.T) {
 }
 
 func TestConfig_GetBaseDir(t *testing.T) {
-	cfg := &Config{BaseDir: "~/test-clade"}
+	cfg := &Config{BaseDir: "~/test-pacer"}
 
 	baseDir := cfg.GetBaseDir()
 
 	assert.NotContains(t, baseDir, "~")
-	assert.Contains(t, baseDir, "test-clade")
+	assert.Contains(t, baseDir, "test-pacer")
 }
 
 func TestConfig_DirectoryGetters(t *testing.T) {
-	cfg := &Config{BaseDir: "/tmp/clade-test"}
+	cfg := &Config{BaseDir: "/tmp/pacer-test"}
 
-	assert.Equal(t, "/tmp/clade-test/repos", cfg.ReposDir())
-	assert.Equal(t, "/tmp/clade-test/experiments", cfg.ExperimentsDir())
-	assert.Equal(t, "/tmp/clade-test/projects", cfg.ProjectsDir())
-	assert.Equal(t, "/tmp/clade-test/scratch", cfg.ScratchDir())
+	assert.Equal(t, "/tmp/pacer-test/repos", cfg.ReposDir())
+	assert.Equal(t, "/tmp/pacer-test/experiments", cfg.ExperimentsDir())
+	assert.Equal(t, "/tmp/pacer-test/projects", cfg.ProjectsDir())
+	assert.Equal(t, "/tmp/pacer-test/scratch", cfg.ScratchDir())
 }
 
 func TestBuiltInLabels(t *testing.T) {
@@ -242,7 +242,7 @@ func TestConfigRoundTrip(t *testing.T) {
 
 	// Create config with various settings
 	cfg := &Config{
-		BaseDir:    "~/test-clade",
+		BaseDir:    "~/test-pacer",
 		Agent:      "claude",
 		AgentFlags: []string{"--continue"},
 		Editor:     "cursor",

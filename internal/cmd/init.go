@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/daniil-lyalko/clade/internal/config"
-	"github.com/daniil-lyalko/clade/internal/git"
-	"github.com/daniil-lyalko/clade/internal/ui"
+	"github.com/daniil-lyalko/pacer/internal/config"
+	"github.com/daniil-lyalko/pacer/internal/git"
+	"github.com/daniil-lyalko/pacer/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -16,15 +16,15 @@ var initForceFlag bool
 
 var initCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Setup a repo for clade with hooks",
-	Long: `Initialize a repository for clade by generating .claude/ configuration.
+	Short: "Setup a repo for pacer with hooks",
+	Long: `Initialize a repository for pacer by generating .claude/ configuration.
 
 This creates:
   - .claude/settings.json with SessionStart hook
   - .claude/commands/drop.md for the /drop command
   - .cursor/hooks.json for Cursor IDE
   - .cursor/commands/drop.md for the /drop command in Cursor
-  - Appends .clade/ to .gitignore
+  - Appends .pacer/ to .gitignore
 
 Run this in any git repository to enable context injection.`,
 	RunE: runInit,
@@ -63,7 +63,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	ui.Header("Initializing clade in %s", git.GetRepoName(repoRoot))
+	ui.Header("Initializing pacer in %s", git.GetRepoName(repoRoot))
 
 	// Create directories
 	if err := os.MkdirAll(commandsDir, 0755); err != nil {
@@ -108,13 +108,13 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Write hooks.yaml.example template
-	cladeDir := filepath.Join(repoRoot, ".clade")
-	if err := os.MkdirAll(cladeDir, 0755); err != nil {
-		ui.Warn("Failed to create .clade/: %v", err)
+	pacerDir := filepath.Join(repoRoot, ".pacer")
+	if err := os.MkdirAll(pacerDir, 0755); err != nil {
+		ui.Warn("Failed to create .pacer/: %v", err)
 	} else {
-		hooksExamplePath := filepath.Join(cladeDir, "hooks.yaml.example")
+		hooksExamplePath := filepath.Join(pacerDir, "hooks.yaml.example")
 		if _, err := os.Stat(hooksExamplePath); os.IsNotExist(err) || initForceFlag {
-			ui.Info("Creating .clade/hooks.yaml.example...")
+			ui.Info("Creating .pacer/hooks.yaml.example...")
 			if err := writeHooksExample(hooksExamplePath); err != nil {
 				ui.Warn("Failed to write hooks.yaml.example: %v", err)
 			}
@@ -128,9 +128,9 @@ func runInit(cmd *cobra.Command, args []string) error {
 		ui.Warn("Failed to update .gitignore: %v", err)
 	}
 
-	ui.Success("Clade initialized!")
-	ui.Detail("Claude Code: SessionStart hook calls clade inject-context")
-	ui.Detail("Cursor: sessionStart hook calls clade inject-context (format auto-detected)")
+	ui.Success("Pacer initialized!")
+	ui.Detail("Claude Code: SessionStart hook calls pacer inject-context")
+	ui.Detail("Cursor: sessionStart hook calls pacer inject-context (format auto-detected)")
 	ui.Detail("Use /drop to save session context before stopping")
 
 	return nil
@@ -145,7 +145,7 @@ func writeSettingsJSON(path string) error {
         "hooks": [
           {
             "type": "command",
-            "command": "clade inject-context"
+            "command": "pacer inject-context"
           }
         ]
       }
@@ -162,7 +162,7 @@ func writeCursorHooksJSON(path string) error {
   "hooks": {
     "sessionStart": [
       {
-        "command": "clade inject-context"
+        "command": "pacer inject-context"
       }
     ]
   }
@@ -172,22 +172,22 @@ func writeCursorHooksJSON(path string) error {
 }
 
 // dropCommandContent is the shared content for /drop command (same for Claude Code and Cursor)
-const dropCommandContent = `Create a timestamped session summary in .clade/dropbags/:
+const dropCommandContent = `Create a timestamped session summary in .pacer/dropbags/:
 
 1. Create directory if needed:
 ` + "   ```bash" + `
-   mkdir -p .clade/dropbags
+   mkdir -p .pacer/dropbags
 ` + "   ```" + `
 
 2. Optionally read the most recent DROPBAG for continuity:
 ` + "   ```bash" + `
-   ls -t .clade/dropbags/DROPBAG-*.md 2>/dev/null | head -1
+   ls -t .pacer/dropbags/DROPBAG-*.md 2>/dev/null | head -1
 ` + "   ```" + `
 
 3. Write new timestamped file:
 ` + "   ```bash" + `
    TIMESTAMP=$(date +%Y-%m-%d-%H%M)
-   cat > .clade/dropbags/DROPBAG-$TIMESTAMP.md <<'EOF'
+   cat > .pacer/dropbags/DROPBAG-$TIMESTAMP.md <<'EOF'
    [your content here]
    EOF
 ` + "   ```" + `
@@ -224,7 +224,7 @@ func writeCursorDropCommand(path string) error {
 }
 
 // hooksExampleContent is the template for hooks.yaml.example
-const hooksExampleContent = `# Clade Lifecycle Hooks
+const hooksExampleContent = `# Pacer Lifecycle Hooks
 # Rename to hooks.yaml to activate
 # See USER_GUIDE.md for details
 
@@ -233,7 +233,7 @@ hooks:
   on_create:
     # - npm install
     # - cp .env.example .env
-    # - echo "Created $CLADE_NAME"
+    # - echo "Created $PACER_NAME"
 
   # Runs when resuming a worktree
   on_resume:
@@ -242,11 +242,11 @@ hooks:
 
   # Runs before removing a worktree
   on_remove:
-    # - echo "Cleaning up $CLADE_NAME"
+    # - echo "Cleaning up $PACER_NAME"
 
 # Available environment variables:
-# CLADE_TYPE, CLADE_NAME, CLADE_PATH, CLADE_REPO_NAME,
-# CLADE_REPO_PATH, CLADE_BRANCH, CLADE_TICKET, CLADE_PROJECT_NAME
+# PACER_TYPE, PACER_NAME, PACER_PATH, PACER_REPO_NAME,
+# PACER_REPO_PATH, PACER_BRANCH, PACER_TICKET, PACER_PROJECT_NAME
 `
 
 func writeHooksExample(path string) error {
@@ -255,7 +255,7 @@ func writeHooksExample(path string) error {
 
 func updateGitignore(path string) error {
 	linesToAdd := []string{
-		".clade/",
+		".pacer/",
 	}
 
 	// Read existing content
@@ -290,9 +290,9 @@ func updateGitignore(path string) error {
 		}
 	}
 
-	// Add comment header if we're adding clade entries
-	if !strings.Contains(existingContent, "# Clade") {
-		if _, err := f.WriteString("\n# Clade\n"); err != nil {
+	// Add comment header if we're adding pacer entries
+	if !strings.Contains(existingContent, "# Pacer") {
+		if _, err := f.WriteString("\n# Pacer\n"); err != nil {
 			return err
 		}
 	}
@@ -307,7 +307,7 @@ func updateGitignore(path string) error {
 	return nil
 }
 
-// InitRepo initializes a repo for clade (used by other commands)
+// InitRepo initializes a repo for pacer (used by other commands)
 func InitRepo(repoPath string) error {
 	claudeDir := filepath.Join(repoPath, ".claude")
 	settingsPath := filepath.Join(claudeDir, "settings.json")

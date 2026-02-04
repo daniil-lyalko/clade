@@ -332,11 +332,11 @@ func TestStateRoundTrip(t *testing.T) {
 }
 
 func TestWorkTreePath(t *testing.T) {
-	cfg := &Config{BaseDir: "/tmp/clade"}
+	cfg := &Config{BaseDir: "/tmp/pacer"}
 
 	path := WorktreePath(cfg, "my-repo", "test-worktree")
 
-	assert.Equal(t, "/tmp/clade/repos/my-repo/test-worktree", path)
+	assert.Equal(t, "/tmp/pacer/repos/my-repo/test-worktree", path)
 }
 
 func TestFindExperimentByName(t *testing.T) {

@@ -3,7 +3,7 @@
   "hooks": {
     "sessionStart": [
       {
-        "command": "clade inject-context"
+        "command": "pacer inject-context"
       }
     ]
   }

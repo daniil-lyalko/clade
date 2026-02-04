@@ -12,7 +12,7 @@ type Worktree struct {
 	Name     string    `json:"name"`
 	Label    string    `json:"label"` // feature, bug, spike, chore, hotfix, docs, or custom
 	Branch   string    `json:"branch"`
-	Path     string    `json:"path,omitempty"` // Actual path if not in ~/clade/repos/ (for adopted worktrees)
+	Path     string    `json:"path,omitempty"` // Actual path if not in ~/pacer/repos/ (for adopted worktrees)
 	Ticket   string    `json:"ticket,omitempty"`
 	Created  time.Time `json:"created"`
 	LastUsed time.Time `json:"last_used"`
@@ -55,7 +55,7 @@ type Scratch struct {
 	LastUsed time.Time `json:"last_used"`
 }
 
-// State holds the runtime state of clade
+// State holds the runtime state of pacer
 type State struct {
 	Version int `json:"version"`
 
@@ -82,13 +82,13 @@ func SetTestStateDir(dir string) {
 }
 
 // StatePath returns the path to the state file
-// State is stored in ~/.config/clade/ alongside other metadata
+// State is stored in ~/.config/pacer/ alongside other metadata
 func StatePath() string {
 	if testStateDir != "" {
 		return filepath.Join(testStateDir, "state.json")
 	}
 	homeDir, _ := os.UserHomeDir()
-	return filepath.Join(homeDir, ".config", "clade", "state.json")
+	return filepath.Join(homeDir, ".config", "pacer", "state.json")
 }
 
 // LegacyStatePath returns the old state file location (in base_dir)
@@ -163,7 +163,7 @@ func LoadState(cfg *Config) (*State, error) {
 
 // Save writes the state to disk
 // Note: cfg parameter kept for backward compatibility but is no longer used
-// as state is now saved to ~/.config/clade/state.json
+// as state is now saved to ~/.config/pacer/state.json
 func (s *State) Save(cfg *Config) error {
 	statePath := StatePath()
 

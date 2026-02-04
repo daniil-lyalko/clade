@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/daniil-lyalko/clade/internal/agent"
-	"github.com/daniil-lyalko/clade/internal/config"
-	"github.com/daniil-lyalko/clade/internal/files"
-	"github.com/daniil-lyalko/clade/internal/git"
-	"github.com/daniil-lyalko/clade/internal/hooks"
-	"github.com/daniil-lyalko/clade/internal/ui"
-	"github.com/daniil-lyalko/clade/internal/util"
+	"github.com/daniil-lyalko/pacer/internal/agent"
+	"github.com/daniil-lyalko/pacer/internal/config"
+	"github.com/daniil-lyalko/pacer/internal/files"
+	"github.com/daniil-lyalko/pacer/internal/git"
+	"github.com/daniil-lyalko/pacer/internal/hooks"
+	"github.com/daniil-lyalko/pacer/internal/ui"
+	"github.com/daniil-lyalko/pacer/internal/util"
 	"github.com/manifoldco/promptui"
 )
 
@@ -126,7 +126,7 @@ func CreateWorktree(name string, wtCfg WorktreeConfig, opts WorktreeOptions) err
 		return nil
 	}
 
-	// v2 path: ~/clade/repos/{repoName}/{name}/
+	// v2 path: ~/pacer/repos/{repoName}/{name}/
 	wtPath := config.WorktreePath(cfg, repoName, name)
 
 	// Dry-run mode: show what would be created and exit
@@ -151,7 +151,7 @@ func CreateWorktree(name string, wtCfg WorktreeConfig, opts WorktreeOptions) err
 	branchInfo := git.CheckBranch(repoPath, branch)
 	if branchInfo.Status != git.BranchNotFound {
 		ui.Error("Branch '%s' already exists", branch)
-		ui.Detail("Use: clade resume %s", name)
+		ui.Detail("Use: pacer resume %s", name)
 		ui.Detail("Or pick a different name")
 		return fmt.Errorf("branch already exists")
 	}
@@ -196,9 +196,9 @@ func CreateWorktree(name string, wtCfg WorktreeConfig, opts WorktreeOptions) err
 		}
 	}
 
-	// Create .clade/metadata.json
+	// Create .pacer/metadata.json
 	ticket := util.ExtractTicket(name)
-	cladeMetadata := map[string]interface{}{
+	pacerMetadata := map[string]interface{}{
 		"type":    wtCfg.Label,
 		"name":    name,
 		"ticket":  ticket,
@@ -206,11 +206,11 @@ func CreateWorktree(name string, wtCfg WorktreeConfig, opts WorktreeOptions) err
 		"branch":  branch,
 		"created": time.Now().Format(time.RFC3339),
 	}
-	metadataPath := filepath.Join(wtPath, ".clade", "metadata.json")
+	metadataPath := filepath.Join(wtPath, ".pacer", "metadata.json")
 	if err := os.MkdirAll(filepath.Dir(metadataPath), 0755); err != nil {
-		ui.Warn("Failed to create .clade directory: %v", err)
+		ui.Warn("Failed to create .pacer directory: %v", err)
 	}
-	if err := util.WriteJSON(metadataPath, cladeMetadata); err != nil {
+	if err := util.WriteJSON(metadataPath, pacerMetadata); err != nil {
 		ui.Warn("Failed to write metadata.json: %v", err)
 	}
 
@@ -305,7 +305,7 @@ func ResumeWorktree(cfg *config.Config, state *config.State, repoName string, wt
 	if _, err := os.Stat(wtPath); os.IsNotExist(err) {
 		ui.Error("Path no longer exists: %s", wtPath)
 		ui.Detail("The worktree may have been removed manually")
-		ui.Detail("Run: clade cleanup %s", wt.Name)
+		ui.Detail("Run: pacer cleanup %s", wt.Name)
 		return fmt.Errorf("worktree not found")
 	}
 
@@ -432,7 +432,7 @@ func printDryRun(cfg *config.Config, repoPath, repoName, name, branch, wtPath st
 	fmt.Println(ui.Dim("Would run:"))
 	fmt.Printf("  git worktree add %s -b %s\n", wtPath, branch)
 	if cfg.AutoInit {
-		fmt.Println("  clade init (auto_init enabled)")
+		fmt.Println("  pacer init (auto_init enabled)")
 	}
 
 	// Show agent/editor that would launch

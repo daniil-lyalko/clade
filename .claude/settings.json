@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "clade inject-context"
+            "command": "pacer inject-context"
           }
         ]
       }

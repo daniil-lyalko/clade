@@ -1,8 +1,8 @@
-# CLAUDE.md - Clade: Claude Code Workflow CLI
+# CLAUDE.md - Pacer: Claude Code Workflow CLI
 
-Clade is a Go CLI that manages git worktrees and context for AI coding sessions. Named after biological clades (branching groups sharing common ancestry) - perfect metaphor for worktree branches.
+Pacer is a Go CLI that manages git worktrees and context for AI coding sessions. Named after biological pacers (branching groups sharing common ancestry) - perfect metaphor for worktree branches.
 
-**Core insight:** Claude Code already has hooks, sessions, MCP. Clade doesn't replace these - it orchestrates worktrees and context so Claude's built-in features work better.
+**Core insight:** Claude Code already has hooks, sessions, MCP. Pacer doesn't replace these - it orchestrates worktrees and context so Claude's built-in features work better.
 
 ---
 
@@ -21,43 +21,43 @@ Clade is a Go CLI that manages git worktrees and context for AI coding sessions.
 
 ```bash
 # Create worktrees
-clade foo                         # Branch: foo (no prefix)
-clade foo -t spike                # Branch: spike/foo (throwaway)
-clade foo -t feature              # Branch: feat/foo (to merge)
-clade foo -t bug                  # Branch: fix/foo (bug fix)
+pacer foo                         # Branch: foo (no prefix)
+pacer foo -t spike                # Branch: spike/foo (throwaway)
+pacer foo -t feature              # Branch: feat/foo (to merge)
+pacer foo -t bug                  # Branch: fix/foo (bug fix)
 
 # Manage work
-clade list                        # What's active
-clade resume foo                  # Get back to work
-clade cleanup foo                 # Clean up when done
-clade status                      # Current context
+pacer list                        # What's active
+pacer resume foo                  # Get back to work
+pacer cleanup foo                 # Clean up when done
+pacer status                      # Current context
 
 # Repo management
-clade repo add ~/repos/my-repo    # Register a repo
-clade repo list                   # Show registered repos
-clade repo remove my-repo         # Unregister
+pacer repo add ~/repos/my-repo    # Register a repo
+pacer repo list                   # Show registered repos
+pacer repo remove my-repo         # Unregister
 
 # Setup & diagnostics
-clade init                        # Setup .claude/ with hooks
-clade doctor                      # Diagnose configuration issues
+pacer init                        # Setup .claude/ with hooks
+pacer doctor                      # Diagnose configuration issues
 
 # Useful flags
-clade foo -p                      # Force repo picker
-clade foo -r my-api               # Use specific repo
-clade foo -o cursor               # Open in Cursor IDE
-clade foo --no-agent              # Skip launching agent
-clade --verbose list              # Enable debug output
+pacer foo -p                      # Force repo picker
+pacer foo -r my-api               # Use specific repo
+pacer foo -o cursor               # Open in Cursor IDE
+pacer foo --no-agent              # Skip launching agent
+pacer --verbose list              # Enable debug output
 ```
 
 ---
 
 ## Three Problems It Solves
 
-1. **Worktree friction** - `git worktree add ../some-path -b some-branch` is verbose. You forget the syntax. Paths are manual. Clade simplifies: `clade try-redis -t spike`.
+1. **Worktree friction** - `git worktree add ../some-path -b some-branch` is verbose. You forget the syntax. Paths are manual. Pacer simplifies: `pacer try-redis -t spike`.
 
-2. **Multi-repo coordination** - Building a feature across 3 repos? No native way to create matching branches. Clade's project command (experimental) creates unified workspaces.
+2. **Multi-repo coordination** - Building a feature across 3 repos? No native way to create matching branches. Pacer's project command (experimental) creates unified workspaces.
 
-3. **Context loss** - You're deep in a session, switch tasks or go home. Tomorrow, Claude has no idea where you left off. Clade's `/drop` command + SessionStart hook restores context automatically.
+3. **Context loss** - You're deep in a session, switch tasks or go home. Tomorrow, Claude has no idea where you left off. Pacer's `/drop` command + SessionStart hook restores context automatically.
 
 ---
 
@@ -65,7 +65,7 @@ clade --verbose list              # Enable debug output
 
 ```
 +-----------------------------------------------------------------+
-|                           CLADE                                 |
+|                           PACER                                 |
 +-----------------------------------------------------------------+
 |  Worktree Management          |  Context Management             |
 |  -------------------------    |  ----------------------------   |
@@ -79,20 +79,20 @@ clade --verbose list              # Enable debug output
 +-----------------------------------------------------------------+
 |                    Claude Code (or other agent)                 |
 +-----------------------------------------------------------------+
-|  SessionStart Hook -> calls `clade inject-context`              |
+|  SessionStart Hook -> calls `pacer inject-context`              |
 |  /drop command -> writes DROPBAG.md                             |
 |  JIRA MCP -> fetches ticket (if referenced)                     |
 +-----------------------------------------------------------------+
 ```
 
-**Key principle:** Clade manages worktrees and generates context. Claude's hooks do the injection. Claude's MCP fetches external data. Clean separation.
+**Key principle:** Pacer manages worktrees and generates context. Claude's hooks do the injection. Claude's MCP fetches external data. Clean separation.
 
 ---
 
 ## Directory Structure
 
 ```
-~/clade/                          # Everything clade creates
+~/pacer/                          # Everything pacer creates
 +-- repos/                        # Repo-centric worktrees
 |   +-- my-api/
 |   |   +-- try-redis/            # label: spike
@@ -101,9 +101,9 @@ clade --verbose list              # Enable debug output
 |       +-- ui-redesign/          # label: feature
 +-- projects/                     # Multi-repo workspaces
 +-- scratch/                      # No-git scratch folders
-+-- state.json                    # Clade's state tracking
++-- state.json                    # Pacer's state tracking
 
-~/.config/clade/
+~/.config/pacer/
 +-- config.json                   # User configuration
 +-- hooks.yaml                    # Global lifecycle hooks
 +-- trusted-repos.json            # Hook trust registry
@@ -115,16 +115,16 @@ clade --verbose list              # Enable debug output
 
 ```bash
 # Install
-go install github.com/daniil-lyalko/clade/cmd/clade@latest
+go install github.com/daniil-lyalko/pacer/cmd/pacer@latest
 
 # First run wizard sets up agent preference
-clade
+pacer
 
 # Or manually configure
-clade repo add ~/repos/my-api
+pacer repo add ~/repos/my-api
 cd ~/repos/my-api
-clade init
-clade try-redis -t spike
+pacer init
+pacer try-redis -t spike
 ```
 
 For detailed usage, see [USER_GUIDE.md](USER_GUIDE.md).

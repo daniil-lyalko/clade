@@ -1,19 +1,19 @@
-Create a timestamped session summary in .clade/dropbags/:
+Create a timestamped session summary in .pacer/dropbags/:
 
 1. Create directory if needed:
    ```bash
-   mkdir -p .clade/dropbags
+   mkdir -p .pacer/dropbags
    ```
 
 2. Optionally read the most recent DROPBAG for continuity:
    ```bash
-   ls -t .clade/dropbags/DROPBAG-*.md 2>/dev/null | head -1
+   ls -t .pacer/dropbags/DROPBAG-*.md 2>/dev/null | head -1
    ```
 
 3. Write new timestamped file:
    ```bash
    TIMESTAMP=$(date +%Y-%m-%d-%H%M)
-   cat > .clade/dropbags/DROPBAG-$TIMESTAMP.md <<'EOF'
+   cat > .pacer/dropbags/DROPBAG-$TIMESTAMP.md <<'EOF'
    [your content here]
    EOF
    ```

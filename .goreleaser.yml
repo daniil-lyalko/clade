@@ -6,9 +6,9 @@ before:
     - go test ./...
 
 builds:
-  - id: clade
-    main: ./cmd/clade
-    binary: clade
+  - id: pacer
+    main: ./cmd/pacer
+    binary: pacer
     env:
       - CGO_ENABLED=0
     goos:
@@ -19,7 +19,7 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/daniil-lyalko/clade/internal/cmd.Version={{.Version}}
+      - -X github.com/daniil-lyalko/pacer/internal/cmd.Version={{.Version}}
     mod_timestamp: '{{ .CommitTimestamp }}'
 
 archives:
@@ -34,7 +34,7 @@ archives:
       - LICENSE
       - README.md
       - CLAUDE.md
-      - scripts/clade-cd.sh
+      - scripts/pacer-cd.sh
 
 checksum:
   name_template: 'checksums.txt'
@@ -66,33 +66,33 @@ changelog:
       order: 999
 
 brews:
-  - name: clade
+  - name: pacer
     repository:
       owner: daniil-lyalko
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     folder: Formula
-    homepage: https://github.com/daniil-lyalko/clade
+    homepage: https://github.com/daniil-lyalko/pacer
     description: Git worktree manager with AI coding session context
     license: MIT
     dependencies:
       - name: git
         type: optional
     install: |
-      bin.install "clade"
+      bin.install "pacer"
 
       # Install shell completions
-      generate_completions_from_executable(bin/"clade", "completion")
+      generate_completions_from_executable(bin/"pacer", "completion")
 
       # Install helper script
-      (prefix/"scripts").install "scripts/clade-cd.sh"
+      (prefix/"scripts").install "scripts/pacer-cd.sh"
     test: |
-      system "#{bin}/clade --version"
+      system "#{bin}/pacer --version"
     caveats: |
       To enable the `ccd` shell function for quick navigation:
 
         # Add to ~/.zshrc or ~/.bashrc:
-        source $(brew --prefix)/opt/clade/scripts/clade-cd.sh
+        source $(brew --prefix)/opt/pacer/scripts/pacer-cd.sh
 
       Then use:
         ccd <worktree-name>    # Jump to worktree
@@ -101,7 +101,7 @@ brews:
 release:
   github:
     owner: daniil-lyalko
-    name: clade
+    name: pacer
   draft: false
   prerelease: auto
   mode: append

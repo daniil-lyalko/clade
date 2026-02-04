@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/daniil-lyalko/clade/internal/context"
-	"github.com/daniil-lyalko/clade/internal/git"
-	"github.com/daniil-lyalko/clade/internal/ui"
+	"github.com/daniil-lyalko/pacer/internal/context"
+	"github.com/daniil-lyalko/pacer/internal/git"
+	"github.com/daniil-lyalko/pacer/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -17,7 +17,7 @@ var statusJSONFlag bool
 var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show context for current directory",
-	Long: `Display clade context information for the current directory.
+	Long: `Display pacer context information for the current directory.
 
 Shows:
   - Experiment/project metadata
@@ -26,7 +26,7 @@ Shows:
   - Recent commits
 
 Works in any directory:
-  - In a clade experiment: Full context info
+  - In a pacer experiment: Full context info
   - In a regular git repo: Basic info + suggestion to init
   - Not in git repo: Clear message
 
@@ -42,7 +42,7 @@ func init() {
 // StatusOutputJSON is the JSON output structure for status command
 type StatusOutputJSON struct {
 	InGitRepo    bool             `json:"in_git_repo"`
-	IsCladeManaged bool           `json:"is_clade_managed"`
+	IsPacerManaged bool           `json:"is_pacer_managed"`
 	RepoRoot     string           `json:"repo_root,omitempty"`
 	Branch       string           `json:"branch,omitempty"`
 	Name         string           `json:"name,omitempty"`
@@ -84,7 +84,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 		ui.Info("Not in a git repository")
-		ui.Detail("Navigate to a git repo or clade experiment")
+		ui.Detail("Navigate to a git repo or pacer experiment")
 		return nil
 	}
 
@@ -93,25 +93,25 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Check for .clade.json (indicates clade-managed worktree)
-	metadata, _ := context.ReadCladeMetadata(repoRoot)
+	// Check for .pacer.json (indicates pacer-managed worktree)
+	metadata, _ := context.ReadPacerMetadata(repoRoot)
 
 	if statusJSONFlag {
 		return printStatusJSON(repoRoot, metadata)
 	}
 
 	if metadata != nil {
-		// We're in a clade-managed worktree
-		printCladeStatus(repoRoot, metadata)
+		// We're in a pacer-managed worktree
+		printPacerStatus(repoRoot, metadata)
 	} else {
-		// Regular git repo, not clade-managed
+		// Regular git repo, not pacer-managed
 		printBasicStatus(repoRoot)
 	}
 
 	return nil
 }
 
-func printStatusJSON(repoRoot string, metadata *context.CladeMetadata) error {
+func printStatusJSON(repoRoot string, metadata *context.PacerMetadata) error {
 	output := StatusOutputJSON{
 		InGitRepo: true,
 		RepoRoot:  repoRoot,
@@ -128,7 +128,7 @@ func printStatusJSON(repoRoot string, metadata *context.CladeMetadata) error {
 	output.HooksConfigured = err == nil
 
 	if metadata != nil {
-		output.IsCladeManaged = true
+		output.IsPacerManaged = true
 		output.Name = metadata.Name
 		output.Type = metadata.Type
 		output.Repo = metadata.Repo
@@ -169,7 +169,7 @@ func printStatusJSON(repoRoot string, metadata *context.CladeMetadata) error {
 	return nil
 }
 
-func printCladeStatus(repoRoot string, metadata *context.CladeMetadata) {
+func printPacerStatus(repoRoot string, metadata *context.PacerMetadata) {
 	// Header with type
 	typeLabel := "Experiment"
 	if metadata.Type == "project" {
@@ -232,7 +232,7 @@ func printBasicStatus(repoRoot string) {
 	}
 
 	ui.KeyValue("Path", repoRoot)
-	fmt.Printf("  %s\n", ui.Dim("(not a clade experiment)"))
+	fmt.Printf("  %s\n", ui.Dim("(not a pacer experiment)"))
 
 	// Check if .claude/ exists
 	fmt.Println()
@@ -241,7 +241,7 @@ func printBasicStatus(repoRoot string) {
 		fmt.Printf("  %s %s\n", ui.Green("✓"), "Hooks configured (.claude/settings.json)")
 	} else {
 		fmt.Printf("  %s %s\n", ui.Yellow("○"), "No hooks configured")
-		ui.Detail("Run 'clade init' to set up SessionStart hooks")
+		ui.Detail("Run 'pacer init' to set up SessionStart hooks")
 	}
 
 	// Git status
@@ -251,9 +251,9 @@ func printBasicStatus(repoRoot string) {
 
 	// Suggestion
 	fmt.Println()
-	ui.Info("This is a regular git repo, not a clade worktree")
-	ui.Detail("Create a worktree: clade <name>")
-	ui.Detail("Or initialize hooks: clade init")
+	ui.Info("This is a regular git repo, not a pacer worktree")
+	ui.Detail("Create a worktree: pacer <name>")
+	ui.Detail("Or initialize hooks: pacer init")
 }
 
 func checkContextFile(repoRoot, filename, description string) {

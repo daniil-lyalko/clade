@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/daniil-lyalko/clade/internal/config"
-	"github.com/daniil-lyalko/clade/internal/hooks"
-	"github.com/daniil-lyalko/clade/internal/ui"
-	"github.com/daniil-lyalko/clade/internal/util"
+	"github.com/daniil-lyalko/pacer/internal/config"
+	"github.com/daniil-lyalko/pacer/internal/hooks"
+	"github.com/daniil-lyalko/pacer/internal/ui"
+	"github.com/daniil-lyalko/pacer/internal/util"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
@@ -34,11 +34,11 @@ Unlike experiments, scratch folders:
   - Still get .claude/ config for hooks and context
 
 Examples:
-  clade scratch doc-analysis       # Quick scratch folder
-  clade scratch PROJ-1234          # Ticket investigation (no code)
-  clade scratch meeting-notes      # Temporary workspace
-  clade scratch foo -o cursor      # Open Cursor IDE
-  clade scratch foo --no-agent     # Skip launching Claude`,
+  pacer scratch doc-analysis       # Quick scratch folder
+  pacer scratch PROJ-1234          # Ticket investigation (no code)
+  pacer scratch meeting-notes      # Temporary workspace
+  pacer scratch foo -o cursor      # Open Cursor IDE
+  pacer scratch foo --no-agent     # Skip launching Claude`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runScratch,
 }
@@ -115,19 +115,19 @@ func runScratch(cmd *cobra.Command, args []string) error {
 		ui.Warn("Failed to initialize .claude/: %v", err)
 	}
 
-	// Create .clade/metadata.json
+	// Create .pacer/metadata.json
 	ticket := extractTicketFromName(scratchName)
-	cladeMetadata := map[string]interface{}{
+	pacerMetadata := map[string]interface{}{
 		"type":    "scratch",
 		"name":    scratchName,
 		"ticket":  ticket,
 		"created": time.Now().Format(time.RFC3339),
 	}
-	metadataPath := filepath.Join(scratchPath, ".clade", "metadata.json")
+	metadataPath := filepath.Join(scratchPath, ".pacer", "metadata.json")
 	if err := os.MkdirAll(filepath.Dir(metadataPath), 0755); err != nil {
-		ui.Warn("Failed to create .clade directory: %v", err)
+		ui.Warn("Failed to create .pacer directory: %v", err)
 	}
-	if err := util.WriteJSON(metadataPath, cladeMetadata); err != nil {
+	if err := util.WriteJSON(metadataPath, pacerMetadata); err != nil {
 		ui.Warn("Failed to write metadata.json: %v", err)
 	}
 

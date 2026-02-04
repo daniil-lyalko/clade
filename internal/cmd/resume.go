@@ -7,10 +7,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/daniil-lyalko/clade/internal/config"
-	"github.com/daniil-lyalko/clade/internal/git"
-	"github.com/daniil-lyalko/clade/internal/hooks"
-	"github.com/daniil-lyalko/clade/internal/ui"
+	"github.com/daniil-lyalko/pacer/internal/config"
+	"github.com/daniil-lyalko/pacer/internal/git"
+	"github.com/daniil-lyalko/pacer/internal/hooks"
+	"github.com/daniil-lyalko/pacer/internal/ui"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
@@ -27,7 +27,7 @@ var resumeCmd = &cobra.Command{
 	Short: "Resume a worktree, project, or scratch folder",
 	Long: `Navigate to a worktree and launch your agent.
 
-If the worktree exists in clade's state, it resumes directly.
+If the worktree exists in pacer's state, it resumes directly.
 If not tracked but the branch exists (locally or remotely), it can adopt it.
 
 Use --branch to adopt any existing branch by its full name.
@@ -39,13 +39,13 @@ The SessionStart hook will automatically inject context including:
   - Ticket information
 
 Examples:
-  clade resume                       # Interactive picker
-  clade resume LEAP-1234             # Resume by worktree name
-  clade resume my-feature -r backend # Adopt branch from specific repo
-  clade resume foo --branch feature/LEAP-1234-foo  # Adopt specific branch
-  clade resume foo -o cursor         # Resume + open Cursor IDE
-  clade resume foo -o code           # Resume + open VS Code
-  clade resume foo --no-agent        # Skip launching agent`,
+  pacer resume                       # Interactive picker
+  pacer resume LEAP-1234             # Resume by worktree name
+  pacer resume my-feature -r backend # Adopt branch from specific repo
+  pacer resume foo --branch feature/LEAP-1234-foo  # Adopt specific branch
+  pacer resume foo -o cursor         # Resume + open Cursor IDE
+  pacer resume foo -o code           # Resume + open VS Code
+  pacer resume foo --no-agent        # Skip launching agent`,
 	Args:              cobra.MaximumNArgs(1),
 	RunE:              runResume,
 	ValidArgsFunction: completeResumableNames,
@@ -129,10 +129,10 @@ func resumeInteractive(cfg *config.Config, state *config.State) error {
 	totalItems := len(state.Worktrees) + len(state.Experiments) + len(state.Projects) + len(state.Scratches)
 	if totalItems == 0 {
 		ui.Info("No worktrees, projects, or scratch folders to resume")
-		ui.Detail("Create one with: clade <name>")
-		ui.Detail("With a type: clade <name> -t feature|bug|spike|chore")
-		ui.Detail("Or for no-git: clade scratch <name>")
-		ui.Detail("Or adopt an existing branch: clade resume <name> -r <repo> --branch <branch>")
+		ui.Detail("Create one with: pacer <name>")
+		ui.Detail("With a type: pacer <name> -t feature|bug|spike|chore")
+		ui.Detail("Or for no-git: pacer scratch <name>")
+		ui.Detail("Or adopt an existing branch: pacer resume <name> -r <repo> --branch <branch>")
 		return nil
 	}
 
@@ -267,7 +267,7 @@ func resumeTrackedExperiment(cfg *config.Config, state *config.State, exp *confi
 	if _, err := os.Stat(exp.Path); os.IsNotExist(err) {
 		ui.Error("Path no longer exists: %s", exp.Path)
 		ui.Detail("The worktree may have been removed manually")
-		ui.Detail("Run: clade cleanup %s", exp.Name)
+		ui.Detail("Run: pacer cleanup %s", exp.Name)
 		return fmt.Errorf("worktree not found")
 	}
 
@@ -444,7 +444,7 @@ func tryAdoptUntrackedWorktree(cfg *config.Config, state *config.State, name str
 				ui.Detail("  %s: %s", m.RepoName, m.Worktree.Path)
 			}
 			ui.Detail("")
-			ui.Detail("Specify repo: clade resume %s -r <repo>", name)
+			ui.Detail("Specify repo: pacer resume %s -r <repo>", name)
 			return true // Handled, but unsuccessfully
 		}
 	}
@@ -538,7 +538,7 @@ func adoptOrphanedBranch(cfg *config.Config, state *config.State, name string) e
 	repoPath, err := resolveRepo(cfg, resumeRepoFlag)
 	if err != nil {
 		ui.Error("Cannot adopt branch without knowing which repo")
-		ui.Detail("Specify repo: clade resume %s -r <repo>", name)
+		ui.Detail("Specify repo: pacer resume %s -r <repo>", name)
 		return err
 	}
 
@@ -547,12 +547,12 @@ func adoptOrphanedBranch(cfg *config.Config, state *config.State, name string) e
 
 	// Require explicit branch name - no more auto-searching for prefixes
 	if resumeBranchFlag == "" {
-		ui.Error("'%s' not found in clade state", name)
+		ui.Error("'%s' not found in pacer state", name)
 		ui.Detail("To adopt an existing branch, specify its full name:")
-		ui.Detail("  clade resume %s -r %s --branch <branch-name>", name, repoName)
+		ui.Detail("  pacer resume %s -r %s --branch <branch-name>", name, repoName)
 		ui.Detail("")
 		ui.Detail("Or create a new worktree:")
-		ui.Detail("  clade %s -r %s", name, repoName)
+		ui.Detail("  pacer %s -r %s", name, repoName)
 		return fmt.Errorf("worktree not found")
 	}
 
@@ -562,11 +562,11 @@ func adoptOrphanedBranch(cfg *config.Config, state *config.State, name string) e
 
 	if branchInfo.Status == git.BranchNotFound {
 		ui.Error("Branch '%s' not found locally or on remote", branch)
-		ui.Detail("Create new worktree: clade %s -r %s", name, repoName)
+		ui.Detail("Create new worktree: pacer %s -r %s", name, repoName)
 		return fmt.Errorf("branch not found")
 	}
 
-	// Use v2 worktree path structure: ~/clade/repos/{repo}/{name}/
+	// Use v2 worktree path structure: ~/pacer/repos/{repo}/{name}/
 	wtPath := config.WorktreePath(cfg, repoName, name)
 
 	// Ensure repos directory exists
@@ -634,7 +634,7 @@ func resumeTrackedScratch(cfg *config.Config, state *config.State, scratch *conf
 	if _, err := os.Stat(scratch.Path); os.IsNotExist(err) {
 		ui.Error("Path no longer exists: %s", scratch.Path)
 		ui.Detail("The scratch folder may have been removed manually")
-		ui.Detail("Run: clade cleanup %s", scratch.Name)
+		ui.Detail("Run: pacer cleanup %s", scratch.Name)
 		return fmt.Errorf("scratch folder not found")
 	}
 

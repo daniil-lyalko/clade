@@ -5,11 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
-	"github.com/daniil-lyalko/clade/internal/config"
-	"github.com/daniil-lyalko/clade/internal/git"
-	"github.com/daniil-lyalko/clade/internal/ui"
+	"github.com/daniil-lyalko/pacer/internal/config"
+	"github.com/daniil-lyalko/pacer/internal/git"
+	"github.com/daniil-lyalko/pacer/internal/ui"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
@@ -22,27 +23,27 @@ var versionFlag bool
 var verboseFlag bool
 
 var rootCmd = &cobra.Command{
-	Use:   "clade [name]",
+	Use:   "pacer [name]",
 	Short: "Claude Code Workflow CLI",
-	Long: `Clade manages git worktrees and context for AI coding sessions.
-
-Named after biological clades (branching groups sharing common ancestry) -
-perfect metaphor for worktree branches.
+	Long: `Pacer manages git worktrees and context for AI coding sessions.
 
 Quick start:
-  clade foo                       # Create worktree (branch: foo)
-  clade foo -t spike              # Create spike worktree (branch: spike/foo)
-  clade list                      # See what's active
-  clade resume foo                # Get back to work
-  clade cleanup foo               # Clean up when done
+  pacer foo                       # Create worktree (branch: foo)
+  pacer foo -t spike              # Create spike worktree (branch: spike/foo)
+  pacer list                      # See what's active
+  pacer resume foo                # Get back to work
+  pacer cleanup foo               # Clean up when done
 
 Shortcut:
-  clade <name>                    # Same as: clade work <name>`,
+  pacer <name>                    # Same as: pacer work <name>`,
 	Args:                  cobra.ArbitraryArgs,
 	DisableFlagsInUseLine: true,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Wire up verbose flag to ui package
 		ui.Verbose = verboseFlag
+
+		// Check for old "clade" directories and offer to migrate
+		checkAndMigrateFromClade()
 	},
 	RunE: runRoot,
 }
@@ -74,7 +75,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&workNoAgentFlag, "no-agent", false, "Skip launching the AI agent")
 	rootCmd.PersistentFlags().BoolVar(&workNoEditorFlag, "no-editor", false, "Skip opening the editor")
 
-	// Work-specific flags for the `clade foo` shorthand
+	// Work-specific flags for the `pacer foo` shorthand
 	// These are local to root and will also be on work command
 	rootCmd.Flags().StringVarP(&workTypeFlag, "type", "t", "", "Type of worktree (spike, feature, bug, chore, hotfix, docs)")
 	rootCmd.Flags().StringVarP(&workRepoFlag, "repo", "r", "", "Repository path or registered name")
@@ -88,18 +89,18 @@ func init() {
 func runRoot(cmd *cobra.Command, args []string) error {
 	// Handle --version flag
 	if versionFlag {
-		fmt.Printf("clade %s\n", Version)
+		fmt.Printf("pacer %s\n", Version)
 		return nil
 	}
 
 	// If a name is provided, delegate to work command
 	if len(args) > 0 {
 		// Guard against typos of subcommands being silently treated as
-		// worktree names (e.g. "clade injext-context" → creating a worktree
+		// worktree names (e.g. "pacer injext-context" → creating a worktree
 		// instead of erroring). Cobra's built-in "Did you mean?" is bypassed
 		// because root has RunE set.
 		if suggestion := suggestSubcommand(cmd, args[0]); suggestion != "" {
-			return fmt.Errorf("unknown command %q\n\nDid you mean:\n  clade %s\n\nRun 'clade --help' for usage", args[0], suggestion)
+			return fmt.Errorf("unknown command %q\n\nDid you mean:\n  pacer %s\n\nRun 'pacer --help' for usage", args[0], suggestion)
 		}
 		return runWork(cmd, args)
 	}
@@ -158,7 +159,7 @@ func levenshtein(a, b string) int {
 	return prev[lb]
 }
 
-// runInteractiveDashboard shows a dashboard and action picker when clade is run with no args
+// runInteractiveDashboard shows a dashboard and action picker when pacer is run with no args
 func runInteractiveDashboard(cmd *cobra.Command, args []string) error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -231,7 +232,7 @@ func showDashboard(cfg *config.Config, state *config.State) {
 	if !hasContent {
 		fmt.Println()
 		ui.Info("No active worktrees")
-		ui.Detail("Create one with: clade <name>")
+		ui.Detail("Create one with: pacer <name>")
 	}
 
 	fmt.Println()
@@ -261,7 +262,7 @@ func showDashboardWorktrees(cfg *config.Config, state *config.State) bool {
 	for repoName := range state.Worktrees {
 		if _, ok := repoSet[repoName]; !ok {
 			// Can't easily get repo path - skip unregistered repos in dashboard
-			// They'll show in `clade list` with (unregistered repo) marker
+			// They'll show in `pacer list` with (unregistered repo) marker
 		}
 	}
 
@@ -669,7 +670,7 @@ func runInteractiveNew(cfg *config.Config) error {
 func selectRepoInteractive(cfg *config.Config) (string, string, error) {
 	if len(cfg.Repos) == 0 {
 		ui.Warn("No repositories registered")
-		ui.Detail("Register one first: clade repo add <path>")
+		ui.Detail("Register one first: pacer repo add <path>")
 		return "", "", fmt.Errorf("no repos")
 	}
 
@@ -806,4 +807,162 @@ func sortScratchesByLastUsed(scratches map[string]*config.Scratch) []*config.Scr
 	})
 
 	return result
+}
+
+// checkAndMigrateFromClade checks for old "clade" directories and offers to migrate them to "pacer"
+// This runs once on startup via PersistentPreRun
+func checkAndMigrateFromClade() {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+
+	oldDataDir := filepath.Join(homeDir, "clade")
+	newDataDir := filepath.Join(homeDir, "pacer")
+	oldConfigDir := filepath.Join(homeDir, ".config", "clade")
+	newConfigDir := filepath.Join(homeDir, ".config", "pacer")
+
+	// Check if old directories exist
+	oldDataExists := dirExists(oldDataDir)
+	oldConfigExists := dirExists(oldConfigDir)
+	newDataExists := dirExists(newDataDir)
+
+	// Nothing to migrate
+	if !oldDataExists && !oldConfigExists {
+		return
+	}
+
+	// Check if old config has state.json (real data) vs new config (possibly fresh from wizard)
+	oldHasState := fileExists(filepath.Join(oldConfigDir, "state.json"))
+	newHasState := fileExists(filepath.Join(newConfigDir, "state.json"))
+
+	// Determine what needs migration
+	needsDataMigration := oldDataExists && !newDataExists
+	needsConfigMigration := oldConfigExists && oldHasState && !newHasState
+
+	if !needsDataMigration && !needsConfigMigration {
+		// Both old and new exist with real data - warn user
+		if oldDataExists && newDataExists {
+			ui.Warn("Found both ~/clade and ~/pacer directories")
+			ui.Detail("Please manually reconcile and remove ~/clade")
+			fmt.Println()
+		}
+		return
+	}
+
+	// Prompt user for migration
+	fmt.Println()
+	ui.Info("Found old 'clade' directories from before the rename to 'pacer'")
+	if needsDataMigration {
+		ui.Detail("Data: %s → %s", oldDataDir, newDataDir)
+	}
+	if needsConfigMigration {
+		ui.Detail("Config: %s → %s", oldConfigDir, newConfigDir)
+	}
+	fmt.Println()
+
+	prompt := promptui.Select{
+		Label: "Migrate to new 'pacer' directories",
+		Items: []string{
+			"Yes - move directories to new locations",
+			"No - I'll handle it manually",
+		},
+	}
+
+	idx, _, err := prompt.Run()
+	if err != nil || idx != 0 {
+		ui.Detail("Skipping migration. You can manually move:")
+		if needsDataMigration {
+			ui.Detail("  mv %s %s", oldDataDir, newDataDir)
+		}
+		if needsConfigMigration {
+			ui.Detail("  mv %s %s", oldConfigDir, newConfigDir)
+		}
+		fmt.Println()
+		return
+	}
+
+	// Perform migration
+	migrated := false
+
+	if needsDataMigration {
+		if err := os.Rename(oldDataDir, newDataDir); err != nil {
+			ui.Warn("Failed to migrate data directory: %v", err)
+		} else {
+			ui.Success("Migrated %s → %s", oldDataDir, newDataDir)
+			migrated = true
+		}
+	}
+
+	if needsConfigMigration {
+		// Remove fresh/empty new config dir if it exists (was created by wizard)
+		if dirExists(newConfigDir) {
+			if err := os.RemoveAll(newConfigDir); err != nil {
+				ui.Warn("Failed to remove fresh config directory: %v", err)
+			}
+		}
+		// Ensure parent directory exists
+		if err := os.MkdirAll(filepath.Dir(newConfigDir), 0755); err != nil {
+			ui.Warn("Failed to create config parent directory: %v", err)
+		} else if err := os.Rename(oldConfigDir, newConfigDir); err != nil {
+			ui.Warn("Failed to migrate config directory: %v", err)
+		} else {
+			ui.Success("Migrated %s → %s", oldConfigDir, newConfigDir)
+			migrated = true
+		}
+	}
+
+	if migrated {
+		// Update paths in config and state files
+		updatePathsInConfigFiles(oldDataDir, newDataDir, newConfigDir)
+		ui.Info("Migration complete!")
+		fmt.Println()
+	}
+}
+
+// updatePathsInConfigFiles replaces old "clade" paths with new "pacer" paths in config/state files
+func updatePathsInConfigFiles(oldDataDir, newDataDir, configDir string) {
+	// Update config.json
+	configPath := filepath.Join(configDir, "config.json")
+	if fileExists(configPath) {
+		if data, err := os.ReadFile(configPath); err == nil {
+			updated := strings.ReplaceAll(string(data), oldDataDir, newDataDir)
+			if updated != string(data) {
+				if err := os.WriteFile(configPath, []byte(updated), 0600); err == nil {
+					ui.Detail("Updated paths in config.json")
+				}
+			}
+		}
+	}
+
+	// Update state.json
+	statePath := filepath.Join(configDir, "state.json")
+	if fileExists(statePath) {
+		if data, err := os.ReadFile(statePath); err == nil {
+			updated := strings.ReplaceAll(string(data), oldDataDir, newDataDir)
+			if updated != string(data) {
+				if err := os.WriteFile(statePath, []byte(updated), 0600); err == nil {
+					ui.Detail("Updated paths in state.json")
+				}
+			}
+		}
+	}
+}
+
+// dirExists checks if a directory exists
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
+}
+
+// fileExists checks if a file exists
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return !info.IsDir()
 }

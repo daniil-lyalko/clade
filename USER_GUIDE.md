@@ -1,8 +1,8 @@
-# Clade User Guide
+# Pacer User Guide
 
-Clade is a Go CLI that manages git worktrees and context for AI coding sessions. Named after biological clades (branching groups sharing common ancestry) - perfect metaphor for worktree branches.
+Pacer is a Go CLI that manages git worktrees and context for AI coding sessions. Named after biological pacers (branching groups sharing common ancestry) - perfect metaphor for worktree branches.
 
-**Core insight:** Claude Code already has hooks, sessions, MCP. Clade doesn't replace these - it orchestrates worktrees and context so Claude's built-in features work better.
+**Core insight:** Claude Code already has hooks, sessions, MCP. Pacer doesn't replace these - it orchestrates worktrees and context so Claude's built-in features work better.
 
 **Three problems it solves:**
 
@@ -12,7 +12,7 @@ Clade is a Go CLI that manages git worktrees and context for AI coding sessions.
 
 3. **Context loss** - You're deep in a session, context built up over hours. You switch tasks or go home. Tomorrow, Claude has no idea where you left off. You waste 15 minutes re-explaining what you were doing.
 
-Clade fixes all three.
+Pacer fixes all three.
 
 ---
 
@@ -32,15 +32,15 @@ Clade fixes all three.
 ### Installation
 
 ```bash
-go install github.com/daniil-lyalko/clade/cmd/clade@latest
+go install github.com/daniil-lyalko/pacer/cmd/pacer@latest
 ```
 
 ### First Run
 
-On first use, clade prompts you to choose your AI coding tool:
+On first use, pacer prompts you to choose your AI coding tool:
 
 ```
-  Welcome to clade! Let's set up your preferences.
+  Welcome to pacer! Let's set up your preferences.
 
   What AI coding tool do you use?
   > Claude Code (terminal)
@@ -55,36 +55,36 @@ This sets `agent` and `editor` appropriately. You can always edit the config lat
 
 ```bash
 # Register a repo
-clade repo add ~/repos/my-api
+pacer repo add ~/repos/my-api
 
 # Create a worktree
 cd ~/repos/my-api
-clade try-redis -t spike
+pacer try-redis -t spike
 
 # See what's active
-clade list
+pacer list
 
 # Resume work
-clade resume try-redis
+pacer resume try-redis
 
 # Clean up when done
-clade cleanup try-redis
+pacer cleanup try-redis
 ```
 
 ---
 
 ## For Cursor Users
 
-If you're primarily a **Cursor IDE** user, clade integrates seamlessly with Cursor's hook system to inject context into your AI conversations.
+If you're primarily a **Cursor IDE** user, pacer integrates seamlessly with Cursor's hook system to inject context into your AI conversations.
 
 ### Cursor-First Setup
 
 ```bash
-# Install clade
-go install github.com/daniil-lyalko/clade/cmd/clade@latest
+# Install pacer
+go install github.com/daniil-lyalko/pacer/cmd/pacer@latest
 
 # First run - select "Cursor (IDE)"
-clade
+pacer
 #   What AI coding tool do you use?
 #     Claude Code (terminal)
 #   > Cursor (IDE)            <-- Select this
@@ -92,13 +92,13 @@ clade
 #     Neither (just worktree management)
 ```
 
-This configures clade with:
+This configures pacer with:
 - `editor`: `"cursor"` - Opens Cursor when creating/resuming worktrees
 - `agent`: `""` (empty) - No separate terminal agent needed
 
 ### How It Works with Cursor
 
-When you run `clade init` in a repo, it creates **both** hook configurations:
+When you run `pacer init` in a repo, it creates **both** hook configurations:
 
 ```
 .cursor/
@@ -110,7 +110,7 @@ When you run `clade init` in a repo, it creates **both** hook configurations:
     drop.md               # /drop command works in Cursor
 ```
 
-**Cursor's `sessionStart` hook** calls `clade inject-context`, which:
+**Cursor's `sessionStart` hook** calls `pacer inject-context`, which:
 1. Detects it's being called by Cursor (piped stdin)
 2. Returns JSON: `{"additional_context": "..."}`
 3. Cursor prepends this to the system prompt
@@ -126,19 +126,19 @@ Your AI in Cursor automatically sees:
 ```bash
 # Create a worktree - Cursor opens automatically
 cd ~/repos/my-api
-clade try-redis -t spike
+pacer try-redis -t spike
 # -> Creates worktree
 # -> Opens Cursor in that directory
 # -> Cursor's AI has full context injected
 
 # Resume work tomorrow
-clade resume try-redis
+pacer resume try-redis
 # -> Opens Cursor
 # -> SessionStart hook fires
 # -> AI sees your DROPBAG from yesterday
 
 # Or open in Cursor explicitly
-clade resume try-redis -o cursor
+pacer resume try-redis -o cursor
 ```
 
 ### Cursor + Claude Code Together
@@ -146,7 +146,7 @@ clade resume try-redis -o cursor
 Some developers use both - Cursor for visual editing, Claude Code for terminal tasks. Select "Both" in the wizard:
 
 ```bash
-clade
+pacer
 #   What AI coding tool do you use?
 #     Claude Code (terminal)
 #     Cursor (IDE)
@@ -157,12 +157,12 @@ This sets:
 - `editor`: `"cursor"` - Opens Cursor first
 - `agent`: `"claude"` - Then launches Claude Code in terminal
 
-**Deduplication:** If both Cursor and Claude Code fire their hooks, clade detects this and skips the second injection within 3 seconds.
+**Deduplication:** If both Cursor and Claude Code fire their hooks, pacer detects this and skips the second injection within 3 seconds.
 
 ### Cursor-Specific Config
 
 ```json
-// ~/.config/clade/config.json
+// ~/.config/pacer/config.json
 {
   "editor": "cursor",
   "agent": "",
@@ -182,7 +182,7 @@ This sets:
 
 ```bash
 # Verify hook output format (should be JSON)
-echo '{}' | clade inject-context
+echo '{}' | pacer inject-context
 # {"additional_context":"# Session Context\n\n## Git Status\n..."}
 
 # Check .cursor/hooks.json exists
@@ -190,7 +190,7 @@ cat .cursor/hooks.json
 # {
 #   "hooks": {
 #     "sessionStart": [{
-#       "command": "clade inject-context"
+#       "command": "pacer inject-context"
 #     }]
 #   }
 # }
@@ -199,26 +199,26 @@ cat .cursor/hooks.json
 ### Cursor Troubleshooting
 
 **Hook not firing?**
-1. Ensure `.cursor/hooks.json` exists: `clade init`
+1. Ensure `.cursor/hooks.json` exists: `pacer init`
 2. Restart Cursor after modifying hooks
 3. Check Cursor settings: hooks must be enabled
 
 **Context not appearing?**
-1. Test manually: `echo '{}' | clade inject-context`
+1. Test manually: `echo '{}' | pacer inject-context`
 2. Should return JSON with `additional_context` field
-3. If plain text, clade isn't detecting Cursor mode
+3. If plain text, pacer isn't detecting Cursor mode
 
 **Using Cursor's "Third-party hooks" feature?**
-Cursor may also read `.claude/settings.json`. Clade handles this - if both hooks fire, the second is silently skipped (3-second dedup window).
+Cursor may also read `.claude/settings.json`. Pacer handles this - if both hooks fire, the second is silently skipped (3-second dedup window).
 
 ---
 
 ## Directory Structure
 
-### Clade's Home: `~/clade/`
+### Pacer's Home: `~/pacer/`
 
 ```
-~/clade/                                    # Everything clade creates lives here
+~/pacer/                                    # Everything pacer creates lives here
 +-- repos/                                  # Repo-centric worktrees (v0.3+)
 |   +-- my-api/                             # Grouped by repository
 |   |   +-- try-redis/                      # label: spike
@@ -237,19 +237,19 @@ Cursor may also read `.claude/settings.json`. Clade handles this - if both hooks
 |   +-- doc-review/                         # Document analysis
 |   +-- meeting-notes/                      # Temporary workspace
 |
-+-- state.json                              # Clade's state tracking
++-- state.json                              # Pacer's state tracking
 ```
 
-### Config: `~/.config/clade/`
+### Config: `~/.config/pacer/`
 
 ```
-~/.config/clade/
+~/.config/pacer/
 +-- config.json                             # User configuration
 +-- hooks.yaml                              # Global lifecycle hooks
 +-- trusted-repos.json                      # Hook trust registry
 ```
 
-### Per-Worktree: `.claude/` (Generated by clade init)
+### Per-Worktree: `.claude/` (Generated by pacer init)
 
 ```
 {any-worktree}/
@@ -264,22 +264,22 @@ Cursor may also read `.claude/settings.json`. Clade handles this - if both hooks
 |   +-- hooks.json                          # Cursor IDE hooks
 |   +-- commands/
 |       +-- drop.md                         # /drop command for Cursor
-+-- .clade/
-|   +-- metadata.json                       # Clade metadata (ticket, label, etc.)
++-- .pacer/
+|   +-- metadata.json                       # Pacer metadata (ticket, label, etc.)
 +-- CLAUDE.md                               # Project context
 ```
 
 ### Hook Integration (Claude Code + Cursor)
 
-Clade supports both Claude Code CLI and Cursor IDE through their respective hook systems:
+Pacer supports both Claude Code CLI and Cursor IDE through their respective hook systems:
 
 **Claude Code** (`.claude/settings.json`):
-- Hook: `SessionStart` -> runs `clade inject-context`
+- Hook: `SessionStart` -> runs `pacer inject-context`
 - Output: Plain text to stdout
 - Context injected into conversation
 
 **Cursor** (`.cursor/hooks.json`):
-- Hook: `sessionStart` -> runs `clade inject-context`
+- Hook: `sessionStart` -> runs `pacer inject-context`
 - Output: JSON with `{"additional_context": "..."}` (auto-detected)
 - Context prepended to system prompt
 
@@ -287,7 +287,7 @@ Both receive:
 - Most recent DROPBAG from last session (with age + staleness warnings)
 - Git status and recent commits
 - Open TODOs in the codebase
-- Ticket information from .clade.json
+- Ticket information from .pacer.json
 
 **Format auto-detection:** `inject-context` detects Cursor vs Claude Code by
 checking if stdin is a pipe (Cursor) or a terminal (Claude Code). No `--json`
@@ -301,14 +301,14 @@ silently skipped.
 **Verifying hooks work:**
 ```bash
 # Test Claude Code format (plain text)
-clade inject-context
+pacer inject-context
 
 # Test Cursor format (simulates piped stdin -> JSON output)
-echo '{}' | clade inject-context
+echo '{}' | pacer inject-context
 ```
 
 **DROPBAG Archives:**
-- `/drop` creates timestamped files: `.clade/dropbags/DROPBAG-2026-01-26-1430.md`
+- `/drop` creates timestamped files: `.pacer/dropbags/DROPBAG-2026-01-26-1430.md`
 - Most recent file is auto-injected at SessionStart
 - Staleness warning appears if >2 days old
 - Full session history preserved (no auto-deletion)
@@ -317,13 +317,13 @@ echo '{}' | clade inject-context
 
 ## Commands
 
-### `clade init`
+### `pacer init`
 
-**Purpose:** Setup a repo for clade (generates .claude/ config with hooks)
+**Purpose:** Setup a repo for pacer (generates .claude/ config with hooks)
 
 ```bash
 cd ~/repos/my-api
-clade init
+pacer init
 ```
 
 **Creates:**
@@ -338,43 +338,43 @@ clade init
 +-- commands/
     +-- drop.md           # /drop command
 
-.clade/
+.pacer/
 +-- hooks.yaml.example    # Template for lifecycle hooks
 
 # Also appends to .gitignore:
-.clade/
+.pacer/
 ```
 
 ---
 
-### `clade repo add <path>`
+### `pacer repo add <path>`
 
 **Purpose:** Register a repo for quick access from anywhere.
 
 ```bash
-clade repo add ~/repos/my-api
-clade repo add ~/repos/my-frontend
-clade repo add ~/repos/my-package
+pacer repo add ~/repos/my-api
+pacer repo add ~/repos/my-frontend
+pacer repo add ~/repos/my-package
 ```
 
 **What happens:**
 - Validates path is a git repo
-- Adds to `~/.config/clade/config.json` repos list
+- Adds to `~/.config/pacer/config.json` repos list
 - Uses directory name as short name (or specify with `--name`)
 
 ```bash
-clade repo add ~/repos/my-api --name backend
-# Now you can use: clade try-redis -r backend
+pacer repo add ~/repos/my-api --name backend
+# Now you can use: pacer try-redis -r backend
 ```
 
 ---
 
-### `clade repo list`
+### `pacer repo list`
 
 **Purpose:** Show registered repos.
 
 ```bash
-$ clade repo list
+$ pacer repo list
 
 Registered repos:
   my-api         ~/repos/my-api (last used)
@@ -384,19 +384,19 @@ Registered repos:
 
 ---
 
-### `clade repo remove <name>`
+### `pacer repo remove <name>`
 
 **Purpose:** Unregister a repo.
 
 ```bash
-clade repo remove my-frontend
+pacer repo remove my-frontend
 ```
 
 ---
 
 ### Repo Selection Logic
 
-When you run `clade work` that needs a repo:
+When you run `pacer work` that needs a repo:
 
 ```
 1. Did you specify --pick/-p flag?
@@ -413,7 +413,7 @@ When you run `clade work` that needs a repo:
 
 4. Are there registered repos?
    YES -> Interactive picker (last used at top)
-   NO  -> Error: "Not in a git repo. Register repos with: clade repo add <path>"
+   NO  -> Error: "Not in a git repo. Register repos with: pacer repo add <path>"
 ```
 
 **Examples:**
@@ -421,17 +421,17 @@ When you run `clade work` that needs a repo:
 ```bash
 # In a repo - just works
 cd ~/repos/my-api
-clade work try-redis -t spike
+pacer work try-redis -t spike
 
 # Force picker even in a repo
-clade work try-redis -t spike -p
+pacer work try-redis -t spike -p
 
 # Anywhere - specify repo
-clade work try-redis -t spike -r my-api
-clade work try-redis --repo ~/repos/my-api
+pacer work try-redis -t spike -r my-api
+pacer work try-redis --repo ~/repos/my-api
 
 # Anywhere - interactive picker
-$ clade work try-redis
+$ pacer work try-redis
 Select repo:
   > my-api (last used)
     my-frontend
@@ -440,11 +440,11 @@ Select repo:
 
 ---
 
-### `clade [name]` or `clade work [name]`
+### `pacer [name]` or `pacer work [name]`
 
 **Purpose:** Create a new worktree for isolated development.
 
-**Simplest usage:** `clade foo` creates a worktree with branch name `foo` (no prefix).
+**Simplest usage:** `pacer foo` creates a worktree with branch name `foo` (no prefix).
 
 Use `-t/--type` to add a branch prefix:
 
@@ -461,19 +461,19 @@ Use `-t/--type` to add a branch prefix:
 **Examples:**
 
 ```bash
-clade new-api                      # branch: new-api (no prefix)
-clade try-redis -t spike           # branch: spike/try-redis
-clade PROJ-123 -t bug              # branch: fix/PROJ-123
-clade cleanup -t chore             # branch: chore/cleanup
-clade foo -o cursor                # Open in Cursor IDE
-clade foo --no-agent               # Skip launching agent
-clade foo -a claude                # Override agent
+pacer new-api                      # branch: new-api (no prefix)
+pacer try-redis -t spike           # branch: spike/try-redis
+pacer PROJ-123 -t bug              # branch: fix/PROJ-123
+pacer cleanup -t chore             # branch: chore/cleanup
+pacer foo -o cursor                # Open in Cursor IDE
+pacer foo --no-agent               # Skip launching agent
+pacer foo -a claude                # Override agent
 ```
 
 **What happens:**
-1. Creates `~/clade/repos/{repo}/{name}/`
+1. Creates `~/pacer/repos/{repo}/{name}/`
 2. Branch: `{name}` or `{prefix}/{name}` (with `-t`)
-3. Writes `.clade.json` with metadata and label
+3. Writes `.pacer.json` with metadata and label
 4. Copies `.claude/` from main repo (or generates if missing)
 5. Runs `on_create` hooks
 6. Opens editor (if configured)
@@ -481,7 +481,7 @@ clade foo -a claude                # Override agent
 
 ---
 
-### `clade` / `clade work` Flags
+### `pacer` / `pacer work` Flags
 
 | Flag | Description |
 |------|-------------|
@@ -496,7 +496,7 @@ clade foo -a claude                # Override agent
 
 ---
 
-### `clade project [name]` (EXPERIMENTAL)
+### `pacer project [name]` (EXPERIMENTAL)
 
 > **Experimental:** Requires `--experimental` flag. May be removed in future versions.
 > For most use cases, consider creating separate worktrees with the same branch name instead.
@@ -504,7 +504,7 @@ clade foo -a claude                # Override agent
 **Purpose:** Create multi-repo workspace with unified branch.
 
 ```bash
-clade --experimental project api-integration
+pacer --experimental project api-integration
 ```
 
 **Interactive prompts:**
@@ -526,18 +526,18 @@ Creating project...
   + package
   + admin-ui
 
-Project ready: ~/clade/projects/api-integration
+Project ready: ~/pacer/projects/api-integration
 Launching claude...
 ```
 
 ---
 
-### `clade list`
+### `pacer list`
 
 **Purpose:** Show all active worktrees, projects, and scratches.
 
 ```bash
-$ clade list
+$ pacer list
 
 my-api (3 worktrees)
   try-redis        spike         2h ago
@@ -559,13 +559,13 @@ An `*` appears after names with uncommitted changes.
 
 ---
 
-### `clade status`
+### `pacer status`
 
 **Purpose:** Show context for current directory.
 
 ```bash
-$ cd ~/clade/repos/my-api/try-redis
-$ clade status
+$ cd ~/pacer/repos/my-api/try-redis
+$ pacer status
 
 Worktree: try-redis
   Repo: my-api
@@ -587,16 +587,16 @@ Recent Sessions:
 
 ---
 
-### `clade resume [name]`
+### `pacer resume [name]`
 
 **Purpose:** Find worktree, cd there, launch agent. Hook handles context injection.
 
 ```bash
-clade resume                    # Interactive picker
-clade resume try-redis          # Specific worktree
-clade resume api-integration    # Project
-clade resume my-exp -o cursor   # Open in Cursor too
-clade resume my-exp --no-agent  # Skip launching Claude
+pacer resume                    # Interactive picker
+pacer resume try-redis          # Specific worktree
+pacer resume api-integration    # Project
+pacer resume my-exp -o cursor   # Open in Cursor too
+pacer resume my-exp --no-agent  # Skip launching Claude
 ```
 
 **Flags:**
@@ -614,29 +614,29 @@ clade resume my-exp --no-agent  # Skip launching Claude
 3. Changes to that directory
 4. Opens editor (if configured)
 5. Launches agent
-6. SessionStart hook fires -> `clade inject-context`
+6. SessionStart hook fires -> `pacer inject-context`
 7. Claude sees DROPBAG.md, git status, TODOs, ticket info
 
 **Adopting orphaned branches:**
 ```bash
 # Resume searches both exp/ and feat/ prefixes
-clade resume my-feature -r my-repo
+pacer resume my-feature -r my-repo
 
 # If both exp/my-feature and feat/my-feature exist, prompts you to choose
 # Or specify exact branch:
-clade resume my-feature -r my-repo --branch feat/my-feature
+pacer resume my-feature -r my-repo --branch feat/my-feature
 ```
 
 ---
 
-### `clade scratch [name]`
+### `pacer scratch [name]`
 
 **Purpose:** Create a no-git scratch folder for documents or analysis.
 
 ```bash
-clade scratch doc-review
-clade scratch PROJ-1234          # Ticket investigation (no code)
-clade scratch meeting-notes      # Temporary workspace
+pacer scratch doc-review
+pacer scratch PROJ-1234          # Ticket investigation (no code)
+pacer scratch meeting-notes      # Temporary workspace
 ```
 
 **Unlike worktrees, scratch folders:**
@@ -645,19 +645,19 @@ clade scratch meeting-notes      # Temporary workspace
 - Still get `.claude/` config for hooks and context
 
 **What happens:**
-1. Creates `~/clade/scratch/{name}/`
-2. Writes `.clade.json` with metadata
+1. Creates `~/pacer/scratch/{name}/`
+2. Writes `.pacer.json` with metadata
 3. Initializes `.claude/` configuration
 4. Launches agent (default: claude)
 
 ---
 
-### `clade cleanup [name]`
+### `pacer cleanup [name]`
 
 **Purpose:** Remove worktree and optionally delete branch.
 
 ```bash
-clade cleanup try-redis
+pacer cleanup try-redis
 ```
 
 **What happens:**
@@ -668,10 +668,10 @@ clade cleanup try-redis
 5. Updates state.json
 
 ```bash
-$ clade cleanup try-redis
+$ pacer cleanup try-redis
 
 Worktree: try-redis
-  Path: ~/clade/repos/my-api/try-redis
+  Path: ~/pacer/repos/my-api/try-redis
   Branch: spike/try-redis
   Label: spike
 
@@ -691,33 +691,33 @@ Cleaned up worktree 'try-redis'
 
 ---
 
-### `clade migrate`
+### `pacer migrate`
 
 **Purpose:** Migrate existing experiments from v1 to v2 repo-centric structure.
 
 ```bash
-clade migrate              # Show what would be migrated (dry-run)
-clade migrate --dry-run    # Explicit dry-run
-clade migrate --force      # Actually perform the migration
+pacer migrate              # Show what would be migrated (dry-run)
+pacer migrate --dry-run    # Explicit dry-run
+pacer migrate --force      # Actually perform the migration
 ```
 
 ---
 
-### `clade doctor`
+### `pacer doctor`
 
 **Purpose:** Diagnose common configuration issues.
 
 ```bash
-$ clade doctor
+$ pacer doctor
 
-Clade Doctor
+Pacer Doctor
 
   ✓ Config file (config.json)
       agent: claude
   ✓ State file
       v2, 3 worktree(s), 0 project(s), 0 scratch(es)
   ✓ Base directory
-      /Users/user/clade
+      /Users/user/pacer
   ✓ Git
       git version 2.43.0
   ✓ Agent
@@ -732,7 +732,7 @@ Clade Doctor
 
 ---
 
-### `clade inject-context`
+### `pacer inject-context`
 
 **Purpose:** Called by SessionStart hook. Outputs context to stdout for the AI agent.
 
@@ -744,11 +744,11 @@ Clade Doctor
 
 ## Configuration
 
-### `~/.config/clade/config.json`
+### `~/.config/pacer/config.json`
 
 ```json
 {
-  "base_dir": "~/clade",
+  "base_dir": "~/pacer",
   "agent": "claude",
   "agent_flags": ["--dangerously-skip-permissions"],
   "editor": "cursor",
@@ -769,15 +769,15 @@ Clade Doctor
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `base_dir` | `~/clade` | Where worktrees/projects are stored |
+| `base_dir` | `~/pacer` | Where worktrees/projects are stored |
 | `agent` | (from wizard) | AI agent command (has hooks, context injection) |
 | `agent_flags` | `[]` | Flags to pass to agent |
 | `editor` | (from wizard) | Editor/IDE to open before agent (cursor, code, nvim) |
-| `auto_init` | `true` | Auto-run `clade init` on new worktrees |
+| `auto_init` | `true` | Auto-run `pacer init` on new worktrees |
 | `repos` | `{}` | Registered repos (name -> path mapping) |
 | `last_repo` | `null` | Last used repo (for picker default) |
 | `copy_files` | `[]` | Extra files to copy to worktrees (beyond built-in defaults) |
-| `custom_labels` | `{}` | Custom labels for `clade -t <label>` |
+| `custom_labels` | `{}` | Custom labels for `pacer -t <label>` |
 
 **Agent vs Editor:**
 - **Agent** = AI assistant (e.g., `claude`). Gets SessionStart hooks, context injection
@@ -787,9 +787,9 @@ Both can be used together. Editor opens first, then agent takes over the termina
 
 ---
 
-### `~/.config/clade/hooks.yaml` (Lifecycle Hooks)
+### `~/.config/pacer/hooks.yaml` (Lifecycle Hooks)
 
-Define scripts to run on clade operations:
+Define scripts to run on pacer operations:
 
 ```yaml
 hooks:
@@ -805,25 +805,25 @@ hooks:
 | Event | When | Example Use Case |
 |-------|------|------------------|
 | `on_create` | After worktree created | `npm install`, copy `.env.example` |
-| `on_resume` | Entering via `clade resume` | `direnv allow`, activate venv |
+| `on_resume` | Entering via `pacer resume` | `direnv allow`, activate venv |
 | `on_remove` | Before worktree deletion | Cleanup temp files, notify |
 
-**Per-repo hooks:** Place `.clade/hooks.yaml` in the repo root. Per-repo hooks run AFTER global hooks.
+**Per-repo hooks:** Place `.pacer/hooks.yaml` in the repo root. Per-repo hooks run AFTER global hooks.
 
 **Environment variables available to hooks:**
 ```bash
-CLADE_TYPE=spike|feature|bug|chore|hotfix|docs
-CLADE_NAME=try-redis
-CLADE_PATH=/Users/user/clade/repos/my-api/try-redis
-CLADE_REPO_NAME=my-api
-CLADE_REPO_PATH=/Users/user/repos/my-api
-CLADE_BRANCH=spike/try-redis
-CLADE_TICKET=PROJ-1234  # if detected
+PACER_TYPE=spike|feature|bug|chore|hotfix|docs
+PACER_NAME=try-redis
+PACER_PATH=/Users/user/pacer/repos/my-api/try-redis
+PACER_REPO_NAME=my-api
+PACER_REPO_PATH=/Users/user/repos/my-api
+PACER_BRANCH=spike/try-redis
+PACER_TICKET=PROJ-1234  # if detected
 ```
 
 **Automatic File Copying:**
 
-When creating a worktree, clade automatically copies common config files from the source repo (if they exist). These are files that are typically gitignored but needed to run the project:
+When creating a worktree, pacer automatically copies common config files from the source repo (if they exist). These are files that are typically gitignored but needed to run the project:
 
 ```
 .env, .env.local, .env.development, .env.test, etc.
@@ -854,9 +854,9 @@ To copy additional files beyond the defaults, add them to your config:
 
 ### State Files
 
-**`~/clade/state.json`** tracks all worktrees, projects, and scratches. See [ARCHITECTURE.md](ARCHITECTURE.md) for the v2 format specification.
+**`~/pacer/state.json`** tracks all worktrees, projects, and scratches. See [ARCHITECTURE.md](ARCHITECTURE.md) for the v2 format specification.
 
-**`.clade/metadata.json`** (per-worktree) stores metadata about the worktree:
+**`.pacer/metadata.json`** (per-worktree) stores metadata about the worktree:
 
 ```json
 {
@@ -870,7 +870,7 @@ To copy additional files beyond the defaults, add them to your config:
 }
 ```
 
-> **Migration note**: Legacy `.clade.json` files are automatically migrated to `.clade/metadata.json` on first access.
+> **Migration note**: Legacy `.pacer.json` files are automatically migrated to `.pacer/metadata.json` on first access.
 
 ---
 
@@ -881,15 +881,15 @@ To copy additional files beyond the defaults, add them to your config:
 ```bash
 # You're in your main repo, want to try something
 $ cd ~/repos/my-api
-$ clade try-redis -t spike
+$ pacer try-redis -t spike
 
 Creating spike: try-redis
-  Path: ~/clade/repos/my-api/try-redis
+  Path: ~/pacer/repos/my-api/try-redis
   Branch: spike/try-redis
 Launching claude...
 
 # Claude starts, SessionStart hook fires, you see:
-# "Session context loaded from clade"
+# "Session context loaded from pacer"
 
 # You work for a few hours...
 # Before stopping:
@@ -900,10 +900,10 @@ Launching claude...
 # You exit claude, go home
 
 # Next morning:
-$ clade resume try-redis
+$ pacer resume try-redis
 
 Resuming: try-redis
-  Path: ~/clade/repos/my-api/try-redis
+  Path: ~/pacer/repos/my-api/try-redis
 Launching claude...
 
 # SessionStart hook fires, Claude sees:
@@ -913,10 +913,10 @@ Launching claude...
 # You're immediately back in context
 
 # Experiment worked! Clean up:
-$ clade cleanup try-redis --merge
+$ pacer cleanup try-redis --merge
 
 # Or it failed:
-$ clade cleanup try-redis  # Just deletes everything
+$ pacer cleanup try-redis  # Just deletes everything
 ```
 
 ---
@@ -924,10 +924,10 @@ $ clade cleanup try-redis  # Just deletes everything
 ### Scenario 2: Ticket Investigation
 
 ```bash
-$ clade PROJ-1234 -t bug
+$ pacer PROJ-1234 -t bug
 
 Creating bug: PROJ-1234
-  Path: ~/clade/repos/my-api/PROJ-1234
+  Path: ~/pacer/repos/my-api/PROJ-1234
   Branch: fix/PROJ-1234
   Ticket: PROJ-1234 (will prompt Claude to fetch)
 Launching claude...
@@ -939,7 +939,7 @@ Launching claude...
 # Now you have full ticket context
 
 # Investigate, fix, done:
-$ clade cleanup PROJ-1234
+$ pacer cleanup PROJ-1234
 ```
 
 ---
@@ -949,7 +949,7 @@ $ clade cleanup PROJ-1234
 > Note: For most use cases, just create separate worktrees with the same branch name.
 
 ```bash
-$ clade --experimental project api-integration
+$ pacer --experimental project api-integration
 
 Project name: api-integration
 Branch: feat/PROJ-5678/api-integration
@@ -962,14 +962,14 @@ Add repos:
 Creating project...
 Launching claude...
 
-# Claude sees all three repos in ~/clade/projects/api-integration/
+# Claude sees all three repos in ~/pacer/projects/api-integration/
 # You work across backend/, package/, admin-ui/
 
 # End of day:
 > /drop
 
 # Next day:
-$ clade resume api-integration
+$ pacer resume api-integration
 
 # All context restored, all three repos ready
 ```
@@ -979,7 +979,7 @@ $ clade resume api-integration
 ### Scenario 4: See What's Active
 
 ```bash
-$ clade list
+$ pacer list
 
 my-api (3 worktrees)
   try-redis        spike         2h ago
@@ -989,7 +989,7 @@ Projects:
   api-integration - 1 day ago
 
 # Oh right, I forgot about that old investigation
-$ clade cleanup PROJ-1234
+$ pacer cleanup PROJ-1234
 ```
 
 ---
@@ -998,47 +998,47 @@ $ clade cleanup PROJ-1234
 
 ```bash
 # Simplified workflow (v0.4+)
-clade foo                         # Create worktree (branch: foo)
-clade foo -t spike                # Create spike (branch: spike/foo)
-clade                             # Interactive dashboard
-clade list                        # What's active
-clade resume foo                  # Get back to work
-clade cleanup foo                 # Clean up when done
+pacer foo                         # Create worktree (branch: foo)
+pacer foo -t spike                # Create spike (branch: spike/foo)
+pacer                             # Interactive dashboard
+pacer list                        # What's active
+pacer resume foo                  # Get back to work
+pacer cleanup foo                 # Clean up when done
 
 # Repo management
-clade repo add ~/repos/my-repo    # Register a repo
-clade repo list                   # Show registered repos
-clade repo remove my-repo         # Unregister
+pacer repo add ~/repos/my-repo    # Register a repo
+pacer repo list                   # Show registered repos
+pacer repo remove my-repo         # Unregister
 
 # With type prefixes
-clade foo -t spike                # spike/foo (throwaway)
-clade foo -t feature              # feat/foo (to merge)
-clade foo -t bug                  # fix/foo (bug fix)
-clade foo -t chore                # chore/foo (maintenance)
-clade foo -t hotfix               # hotfix/foo (urgent)
-clade foo -t docs                 # docs/foo (documentation)
-clade foo -t perf                 # Custom label from config
+pacer foo -t spike                # spike/foo (throwaway)
+pacer foo -t feature              # feat/foo (to merge)
+pacer foo -t bug                  # fix/foo (bug fix)
+pacer foo -t chore                # chore/foo (maintenance)
+pacer foo -t hotfix               # hotfix/foo (urgent)
+pacer foo -t docs                 # docs/foo (documentation)
+pacer foo -t perf                 # Custom label from config
 
 # Other commands
-clade init                        # Setup .claude/ with hooks
-clade scratch doc-review          # No-git scratch folder
-clade status                      # Current context
-clade doctor                      # Diagnose configuration issues
-clade migrate                     # Migrate v1 -> v2 structure
+pacer init                        # Setup .claude/ with hooks
+pacer scratch doc-review          # No-git scratch folder
+pacer status                      # Current context
+pacer doctor                      # Diagnose configuration issues
+pacer migrate                     # Migrate v1 -> v2 structure
 
 # Useful flags
-clade foo -p                      # Force repo picker
-clade foo -r my-api               # Use specific repo
-clade foo -b custom/name          # Custom branch name
-clade foo -o cursor               # Open in Cursor IDE
-clade foo -a claude               # Override agent
-clade foo --no-agent              # Skip launching agent
-clade foo --no-editor             # Skip opening editor
-clade resume foo -o code          # Open VS Code on resume
-clade --verbose list              # Enable debug output
+pacer foo -p                      # Force repo picker
+pacer foo -r my-api               # Use specific repo
+pacer foo -b custom/name          # Custom branch name
+pacer foo -o cursor               # Open in Cursor IDE
+pacer foo -a claude               # Override agent
+pacer foo --no-agent              # Skip launching agent
+pacer foo --no-editor             # Skip opening editor
+pacer resume foo -o code          # Open VS Code on resume
+pacer --verbose list              # Enable debug output
 
 # Experimental
-clade --experimental project foo  # Multi-repo workspace
+pacer --experimental project foo  # Multi-repo workspace
 ```
 
 ---

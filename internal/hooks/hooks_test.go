@@ -81,13 +81,13 @@ func TestEnv_ToEnvVars(t *testing.T) {
 
 	vars := env.toEnvVars()
 
-	assert.Contains(t, vars, "CLADE_TYPE=spike")
-	assert.Contains(t, vars, "CLADE_NAME=try-redis")
-	assert.Contains(t, vars, "CLADE_PATH=/path/to/worktree")
-	assert.Contains(t, vars, "CLADE_REPO_NAME=my-api")
-	assert.Contains(t, vars, "CLADE_REPO_PATH=/path/to/repo")
-	assert.Contains(t, vars, "CLADE_BRANCH=spike/try-redis")
-	assert.Contains(t, vars, "CLADE_TICKET=PROJ-1234")
+	assert.Contains(t, vars, "PACER_TYPE=spike")
+	assert.Contains(t, vars, "PACER_NAME=try-redis")
+	assert.Contains(t, vars, "PACER_PATH=/path/to/worktree")
+	assert.Contains(t, vars, "PACER_REPO_NAME=my-api")
+	assert.Contains(t, vars, "PACER_REPO_PATH=/path/to/repo")
+	assert.Contains(t, vars, "PACER_BRANCH=spike/try-redis")
+	assert.Contains(t, vars, "PACER_TICKET=PROJ-1234")
 }
 
 func TestEnv_ToEnvVars_NoTicket(t *testing.T) {
@@ -103,9 +103,9 @@ func TestEnv_ToEnvVars_NoTicket(t *testing.T) {
 
 	vars := env.toEnvVars()
 
-	// Should not include CLADE_TICKET
+	// Should not include PACER_TICKET
 	for _, v := range vars {
-		assert.NotContains(t, v, "CLADE_TICKET=")
+		assert.NotContains(t, v, "PACER_TICKET=")
 	}
 }
 
@@ -114,7 +114,7 @@ func TestRunHooks_SimpleCommand(t *testing.T) {
 
 	// Create global hooks
 	homeDir := t.TempDir()
-	configDir := filepath.Join(homeDir, ".config", "clade")
+	configDir := filepath.Join(homeDir, ".config", "pacer")
 	require.NoError(t, os.MkdirAll(configDir, 0755))
 
 	originalHome := os.Getenv("HOME")
@@ -150,7 +150,7 @@ func TestRunHooks_MultipleCommands(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	homeDir := t.TempDir()
-	configDir := filepath.Join(homeDir, ".config", "clade")
+	configDir := filepath.Join(homeDir, ".config", "pacer")
 	require.NoError(t, os.MkdirAll(configDir, 0755))
 
 	originalHome := os.Getenv("HOME")
@@ -186,7 +186,7 @@ func TestRunHooks_FailureContinues(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	homeDir := t.TempDir()
-	configDir := filepath.Join(homeDir, ".config", "clade")
+	configDir := filepath.Join(homeDir, ".config", "pacer")
 	require.NoError(t, os.MkdirAll(configDir, 0755))
 
 	originalHome := os.Getenv("HOME")
@@ -221,7 +221,7 @@ func TestRunHooks_EnvironmentVariables(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	homeDir := t.TempDir()
-	configDir := filepath.Join(homeDir, ".config", "clade")
+	configDir := filepath.Join(homeDir, ".config", "pacer")
 	require.NoError(t, os.MkdirAll(configDir, 0755))
 
 	originalHome := os.Getenv("HOME")
@@ -231,9 +231,9 @@ func TestRunHooks_EnvironmentVariables(t *testing.T) {
 	hooksFile := filepath.Join(configDir, "hooks.yaml")
 	content := `hooks:
   on_create:
-    - echo $CLADE_NAME
-    - echo $CLADE_TYPE
-    - echo $CLADE_BRANCH
+    - echo $PACER_NAME
+    - echo $PACER_TYPE
+    - echo $PACER_BRANCH
 `
 	require.NoError(t, os.WriteFile(hooksFile, []byte(content), 0644))
 
@@ -261,7 +261,7 @@ func TestRunHooks_RepoSpecificHooks(t *testing.T) {
 
 	// Setup global hooks
 	homeDir := t.TempDir()
-	configDir := filepath.Join(homeDir, ".config", "clade")
+	configDir := filepath.Join(homeDir, ".config", "pacer")
 	require.NoError(t, os.MkdirAll(configDir, 0755))
 
 	originalHome := os.Getenv("HOME")
@@ -269,8 +269,8 @@ func TestRunHooks_RepoSpecificHooks(t *testing.T) {
 	defer os.Setenv("HOME", originalHome)
 
 	// Trust repo hooks for testing
-	os.Setenv("CLADE_TRUST_REPO_HOOKS", "1")
-	defer os.Unsetenv("CLADE_TRUST_REPO_HOOKS")
+	os.Setenv("PACER_TRUST_REPO_HOOKS", "1")
+	defer os.Unsetenv("PACER_TRUST_REPO_HOOKS")
 
 	globalHooks := filepath.Join(configDir, "hooks.yaml")
 	globalContent := `hooks:
@@ -280,7 +280,7 @@ func TestRunHooks_RepoSpecificHooks(t *testing.T) {
 	require.NoError(t, os.WriteFile(globalHooks, []byte(globalContent), 0644))
 
 	// Setup repo-specific hooks
-	repoHooksDir := filepath.Join(tmpDir, ".clade")
+	repoHooksDir := filepath.Join(tmpDir, ".pacer")
 	require.NoError(t, os.MkdirAll(repoHooksDir, 0755))
 
 	repoHooks := filepath.Join(repoHooksDir, "hooks.yaml")
@@ -306,7 +306,7 @@ func TestRunHooks_RepoSpecificHooks(t *testing.T) {
 
 func TestHasHooks_GlobalOnly(t *testing.T) {
 	homeDir := t.TempDir()
-	configDir := filepath.Join(homeDir, ".config", "clade")
+	configDir := filepath.Join(homeDir, ".config", "pacer")
 	require.NoError(t, os.MkdirAll(configDir, 0755))
 
 	originalHome := os.Getenv("HOME")
@@ -326,7 +326,7 @@ func TestHasHooks_GlobalOnly(t *testing.T) {
 
 func TestHasHooks_RepoOnly(t *testing.T) {
 	tmpDir := t.TempDir()
-	repoHooksDir := filepath.Join(tmpDir, ".clade")
+	repoHooksDir := filepath.Join(tmpDir, ".pacer")
 	require.NoError(t, os.MkdirAll(repoHooksDir, 0755))
 
 	hooksFile := filepath.Join(repoHooksDir, "hooks.yaml")

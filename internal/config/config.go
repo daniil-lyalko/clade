@@ -20,7 +20,7 @@ type LabelConfig struct {
 	MergeExpected bool   `json:"merge_expected"`
 }
 
-// Config holds the user configuration for clade
+// Config holds the user configuration for pacer
 type Config struct {
 	BaseDir            string                  `json:"base_dir"`
 	Agent              string                  `json:"agent"`
@@ -39,7 +39,7 @@ type Config struct {
 func DefaultConfig() *Config {
 	homeDir, _ := os.UserHomeDir()
 	return &Config{
-		BaseDir:            filepath.Join(homeDir, "clade"),
+		BaseDir:            filepath.Join(homeDir, "pacer"),
 		Agent:              "",  // Set by first-run wizard
 		AgentFlags:         []string{},
 		Editor:             "",  // Set by first-run wizard
@@ -53,24 +53,24 @@ func DefaultConfig() *Config {
 }
 
 // ConfigPath returns the path to the config file
-// Always uses ~/.config/clade/ for consistency across platforms
+// Always uses ~/.config/pacer/ for consistency across platforms
 func ConfigPath() (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(homeDir, ".config", "clade", "config.json"), nil
+	return filepath.Join(homeDir, ".config", "pacer", "config.json"), nil
 }
 
 // legacyConfigPath returns the old platform-specific config path (for migration)
-// macOS: ~/Library/Application Support/clade/config.json
-// Linux: ~/.config/clade/config.json (same as new path)
+// macOS: ~/Library/Application Support/pacer/config.json
+// Linux: ~/.config/pacer/config.json (same as new path)
 func legacyConfigPath() (string, error) {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(configDir, "clade", "config.json"), nil
+	return filepath.Join(configDir, "pacer", "config.json"), nil
 }
 
 // Load reads the config from disk, creating default if not exists
@@ -125,7 +125,7 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-// migrateFromLegacyPath checks for config at legacy platform-specific path and migrates to ~/.config/clade/
+// migrateFromLegacyPath checks for config at legacy platform-specific path and migrates to ~/.config/pacer/
 // Returns (migrated bool, error)
 func migrateFromLegacyPath(newPath string) (bool, error) {
 	legacyPath, err := legacyConfigPath()
@@ -168,7 +168,7 @@ func migrateFromLegacyPath(newPath string) (bool, error) {
 // runFirstRunWizard prompts the user for initial configuration
 func runFirstRunWizard(cfg *Config) error {
 	fmt.Println()
-	fmt.Println("  Welcome to clade! Let's set up your preferences.")
+	fmt.Println("  Welcome to pacer! Let's set up your preferences.")
 	fmt.Println()
 
 	// Ask about AI coding tool
@@ -210,7 +210,7 @@ func runFirstRunWizard(cfg *Config) error {
 	}
 
 	fmt.Println()
-	fmt.Println("  Configuration saved to ~/.config/clade/config.json")
+	fmt.Println("  Configuration saved to ~/.config/pacer/config.json")
 	fmt.Println("  You can edit it anytime to change these settings.")
 	fmt.Println()
 
@@ -274,10 +274,10 @@ func (c *Config) ScratchDir() string {
 }
 
 // ArchiveDir returns the path to the session archive directory
-// Archives are stored in ~/.config/clade/archive/ to persist across base_dir changes
+// Archives are stored in ~/.config/pacer/archive/ to persist across base_dir changes
 func ArchiveDir() string {
 	homeDir, _ := os.UserHomeDir()
-	return filepath.Join(homeDir, ".config", "clade", "archive")
+	return filepath.Join(homeDir, ".config", "pacer", "archive")
 }
 
 // GetRepoCopyFiles returns the copy_files setting for a repo

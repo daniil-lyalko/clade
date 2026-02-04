@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/daniil-lyalko/clade/internal/agent"
-	"github.com/daniil-lyalko/clade/internal/config"
-	"github.com/daniil-lyalko/clade/internal/git"
-	"github.com/daniil-lyalko/clade/internal/ui"
-	"github.com/daniil-lyalko/clade/internal/util"
+	"github.com/daniil-lyalko/pacer/internal/agent"
+	"github.com/daniil-lyalko/pacer/internal/config"
+	"github.com/daniil-lyalko/pacer/internal/git"
+	"github.com/daniil-lyalko/pacer/internal/ui"
+	"github.com/daniil-lyalko/pacer/internal/util"
 	"github.com/manifoldco/promptui"
 )
 
@@ -63,12 +63,12 @@ func resolveRepo(cfg *config.Config, repoFlag string) (string, error) {
 				return "", err
 			}
 
-			// Try to get context from .clade/metadata.json (or legacy .clade.json)
-			cladeFile := filepath.Join(cwd, ".clade", "metadata.json")
-			if _, statErr := os.Stat(cladeFile); os.IsNotExist(statErr) {
-				cladeFile = filepath.Join(cwd, ".clade.json") // Fallback to legacy path
+			// Try to get context from .pacer/metadata.json (or legacy .pacer.json)
+			pacerFile := filepath.Join(cwd, ".pacer", "metadata.json")
+			if _, statErr := os.Stat(pacerFile); os.IsNotExist(statErr) {
+				pacerFile = filepath.Join(cwd, ".pacer.json") // Fallback to legacy path
 			}
-			if data, err := os.ReadFile(cladeFile); err == nil {
+			if data, err := os.ReadFile(pacerFile); err == nil {
 				var meta map[string]interface{}
 				if json.Unmarshal(data, &meta) == nil {
 					name, _ := meta["name"].(string)
@@ -78,9 +78,9 @@ func resolveRepo(cfg *config.Config, repoFlag string) (string, error) {
 						repoName = git.GetRepoName(mainRepo)
 					}
 					if name != "" && label != "" {
-						ui.Info("In clade worktree '%s' (%s), using source repo: %s", name, label, repoName)
+						ui.Info("In pacer worktree '%s' (%s), using source repo: %s", name, label, repoName)
 					} else if name != "" {
-						ui.Info("In clade worktree '%s', using source repo: %s", name, repoName)
+						ui.Info("In pacer worktree '%s', using source repo: %s", name, repoName)
 					} else {
 						ui.Info("In worktree, using main repo: %s", git.GetRepoName(mainRepo))
 					}
@@ -98,7 +98,7 @@ func resolveRepo(cfg *config.Config, repoFlag string) (string, error) {
 
 	// 3. Check if there are registered repos
 	if len(cfg.Repos) == 0 {
-		return "", fmt.Errorf("not in a git repo. Register repos with: clade repo add <path>")
+		return "", fmt.Errorf("not in a git repo. Register repos with: pacer repo add <path>")
 	}
 
 	// 4. Interactive picker
@@ -170,7 +170,7 @@ func showRepoPicker(cfg *config.Config) (string, error) {
 	}
 
 	if len(repoNames) == 0 {
-		return "", fmt.Errorf("no repos available. Register repos with: clade repo add <path>")
+		return "", fmt.Errorf("no repos available. Register repos with: pacer repo add <path>")
 	}
 
 	prompt := promptui.Select{

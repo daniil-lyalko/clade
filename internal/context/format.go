@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/daniil-lyalko/clade/internal/git"
+	"github.com/daniil-lyalko/pacer/internal/git"
 )
 
-// CladeMetadata represents the .clade.json file
-type CladeMetadata struct {
+// PacerMetadata represents the .pacer.json file
+type PacerMetadata struct {
 	Type    string `json:"type"`
 	Name    string `json:"name"`
 	Ticket  string `json:"ticket,omitempty"`
@@ -26,7 +26,7 @@ type ContextOutput struct {
 	GitStatus  *git.Status
 	Commits    []string
 	Todos      []TodoItem
-	Metadata   *CladeMetadata
+	Metadata   *PacerMetadata
 	RepoName   string
 	BranchName string
 	Dir        string // Directory where context was gathered (for path resolution)
@@ -64,8 +64,8 @@ func GatherContext(dir string) (*ContextOutput, error) {
 		ctx.Todos = todos
 	}
 
-	// Read .clade.json metadata
-	metadata, _ := ReadCladeMetadata(dir)
+	// Read .pacer.json metadata
+	metadata, _ := ReadPacerMetadata(dir)
 	ctx.Metadata = metadata
 
 	return ctx, nil
@@ -166,16 +166,16 @@ func FormatContext(ctx *ContextOutput) string {
 	return sb.String()
 }
 
-// ReadCladeMetadata reads the metadata file from a directory.
-// Supports both new path (.clade/metadata.json) and legacy path (.clade.json).
+// ReadPacerMetadata reads the metadata file from a directory.
+// Supports both new path (.pacer/metadata.json) and legacy path (.pacer.json).
 // Auto-migrates from legacy to new path if found.
-func ReadCladeMetadata(dir string) (*CladeMetadata, error) {
-	newPath := filepath.Join(dir, ".clade", "metadata.json")
-	oldPath := filepath.Join(dir, ".clade.json")
+func ReadPacerMetadata(dir string) (*PacerMetadata, error) {
+	newPath := filepath.Join(dir, ".pacer", "metadata.json")
+	oldPath := filepath.Join(dir, ".pacer.json")
 
 	// Try new path first
 	if data, err := os.ReadFile(newPath); err == nil {
-		var metadata CladeMetadata
+		var metadata PacerMetadata
 		if err := json.Unmarshal(data, &metadata); err != nil {
 			return nil, err
 		}
@@ -188,14 +188,14 @@ func ReadCladeMetadata(dir string) (*CladeMetadata, error) {
 		return nil, err
 	}
 
-	var metadata CladeMetadata
+	var metadata PacerMetadata
 	if err := json.Unmarshal(data, &metadata); err != nil {
 		return nil, err
 	}
 
 	// Auto-migrate: move to new location
-	cladeDir := filepath.Join(dir, ".clade")
-	if err := os.MkdirAll(cladeDir, 0755); err == nil {
+	pacerDir := filepath.Join(dir, ".pacer")
+	if err := os.MkdirAll(pacerDir, 0755); err == nil {
 		if err := os.Rename(oldPath, newPath); err == nil {
 			// Migration successful - silently continue
 		}

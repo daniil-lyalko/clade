@@ -1,22 +1,22 @@
-[![CI](https://github.com/daniil-lyalko/clade/actions/workflows/ci.yml/badge.svg)](https://github.com/daniil-lyalko/clade/actions/workflows/ci.yml)
+[![CI](https://github.com/daniil-lyalko/pacer/actions/workflows/ci.yml/badge.svg)](https://github.com/daniil-lyalko/pacer/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-# Clade
+# Pacer
 
 A CLI that manages git worktrees and context for AI coding sessions.
 
 ## See It in Action
 
 ```bash
-$ clade try-redis -t spike
-  ✓ Created worktree: ~/clade/repos/my-api/try-redis
+$ pacer try-redis -t spike
+  ✓ Created worktree: ~/pacer/repos/my-api/try-redis
   ✓ Branch: spike/try-redis
   ✓ Launching claude...
 
-$ clade resume try-redis
+$ pacer resume try-redis
   # Context auto-injected: git status, recent commits, previous session notes
 
-$ clade cleanup try-redis
+$ pacer cleanup try-redis
   ✓ Archived session context
   ✓ Worktree removed
 ```
@@ -25,24 +25,24 @@ $ clade cleanup try-redis
 
 ```bash
 # First run - wizard asks about your AI tool (Claude Code / Cursor)
-clade foo
+pacer foo
 
 # That's it! Creates worktree, launches your agent
 # See what's active
-clade list
+pacer list
 
 # Resume tomorrow with full context
-clade resume foo
+pacer resume foo
 
 # Done? Clean up
-clade cleanup foo
+pacer cleanup foo
 ```
 
 ## Install
 
 **Homebrew (Recommended):**
 ```bash
-brew install daniil-lyalko/tap/clade
+brew install daniil-lyalko/tap/pacer
 ```
 
 <details>
@@ -50,49 +50,49 @@ brew install daniil-lyalko/tap/clade
 
 **Prebuilt Binaries:**
 
-Download from [GitHub Releases](https://github.com/daniil-lyalko/clade/releases):
-- macOS (Intel): `clade_VERSION_darwin_amd64.tar.gz`
-- macOS (Apple Silicon): `clade_VERSION_darwin_arm64.tar.gz`
-- Linux (x64): `clade_VERSION_linux_amd64.tar.gz`
+Download from [GitHub Releases](https://github.com/daniil-lyalko/pacer/releases):
+- macOS (Intel): `pacer_VERSION_darwin_amd64.tar.gz`
+- macOS (Apple Silicon): `pacer_VERSION_darwin_arm64.tar.gz`
+- Linux (x64): `pacer_VERSION_linux_amd64.tar.gz`
 
 ```bash
-tar -xzf clade_*.tar.gz
-sudo mv clade /usr/local/bin/
+tar -xzf pacer_*.tar.gz
+sudo mv pacer /usr/local/bin/
 ```
 
 **From Source** (Go 1.22+):
 ```bash
-go install github.com/daniil-lyalko/clade/cmd/clade@latest
+go install github.com/daniil-lyalko/pacer/cmd/pacer@latest
 ```
 
 </details>
 
-## Why Clade?
+## Why Pacer?
 
-1. **Worktree friction** - `git worktree add ../path -b branch` is verbose. Clade makes it one command.
-2. **Context loss** - Switch tasks, come back tomorrow, Claude has no idea where you left off. Clade preserves context via SessionStart hooks.
+1. **Worktree friction** - `git worktree add ../path -b branch` is verbose. Pacer makes it one command.
+2. **Context loss** - Switch tasks, come back tomorrow, Claude has no idea where you left off. Pacer preserves context via SessionStart hooks.
 3. **Works with Claude Code AND Cursor** - Both support the same hook protocol for context injection.
 
 ## Commands
 
 ```bash
 # Core workflow
-clade foo                      # Create worktree (branch: foo)
-clade foo -t spike             # Throwaway experiment (branch: spike/foo)
-clade foo -t feature           # Feature branch (branch: feat/foo)
-clade foo -t bug               # Bug fix (branch: fix/foo)
-clade list                     # See all worktrees
-clade resume foo               # Resume with context
-clade cleanup foo              # Clean up (archives session)
+pacer foo                      # Create worktree (branch: foo)
+pacer foo -t spike             # Throwaway experiment (branch: spike/foo)
+pacer foo -t feature           # Feature branch (branch: feat/foo)
+pacer foo -t bug               # Bug fix (branch: fix/foo)
+pacer list                     # See all worktrees
+pacer resume foo               # Resume with context
+pacer cleanup foo              # Clean up (archives session)
 
 # Repo management
-clade repo add ~/repos/my-api  # Register a repo
-clade repo list                # Show registered repos
+pacer repo add ~/repos/my-api  # Register a repo
+pacer repo list                # Show registered repos
 
 # Setup & diagnostics
-clade init                     # Setup hooks in current repo
-clade doctor                   # Diagnose configuration issues
-clade status                   # Show context for current dir
+pacer init                     # Setup hooks in current repo
+pacer doctor                   # Diagnose configuration issues
+pacer status                   # Show context for current dir
 ```
 
 ### Key Flags
@@ -113,56 +113,56 @@ Combine flags for complex workflows:
 
 ```bash
 # Branch from develop instead of main
-clade PROJ-123 -t feature -f develop
+pacer PROJ-123 -t feature -f develop
 
 # Full example: spike from develop in specific repo
-clade DEVOPS-5700-research -t spike -f develop -r my-api
+pacer DEVOPS-5700-research -t spike -f develop -r my-api
 
 # Custom branch name (ignore type prefix)
-clade foo -b custom/branch-name
+pacer foo -b custom/branch-name
 
 # Create worktree but open in different editor
-clade foo -t feature -o code
+pacer foo -t feature -o code
 
 # Dry run to preview without creating
-clade foo -t spike --dry-run
+pacer foo -t spike --dry-run
 ```
 
 ## How It Works
 
-When you run `clade init`, it creates hook configurations:
+When you run `pacer init`, it creates hook configurations:
 
 ```
 .claude/settings.json       # Claude Code SessionStart hook
 .claude/commands/drop.md    # /drop command for Claude Code
 .cursor/hooks.json          # Cursor sessionStart hook
 .cursor/commands/drop.md    # /drop command for Cursor
-.clade/hooks.yaml.example   # Template for lifecycle hooks
-.gitignore                  # Auto-updated with .clade/ entries
+.pacer/hooks.yaml.example   # Template for lifecycle hooks
+.gitignore                  # Auto-updated with .pacer/ entries
 ```
 
 On session start, the hook injects:
-- **Previous session notes** (from `.clade/dropbags/`) with staleness warnings
+- **Previous session notes** (from `.pacer/dropbags/`) with staleness warnings
 - **Git status** and recent commits
 - **Open TODOs** in code
 
-> **Note**: If clade isn't installed, hooks fail silently and sessions continue normally.
-> Team members without clade can still work in the repo.
+> **Note**: If pacer isn't installed, hooks fail silently and sessions continue normally.
+> Team members without pacer can still work in the repo.
 
 ### The `/drop` Command
 
 Before stopping work, run `/drop` in Claude Code or Cursor:
-1. Creates timestamped file in `.clade/dropbags/DROPBAG-YYYY-MM-DD-HHMM.md`
-2. Auto-injected on next `clade resume` with staleness warnings (>2 days old)
+1. Creates timestamped file in `.pacer/dropbags/DROPBAG-YYYY-MM-DD-HHMM.md`
+2. Auto-injected on next `pacer resume` with staleness warnings (>2 days old)
 3. Full session history preserved for reference
 
 ## Configuration
 
-`~/.config/clade/config.json`:
+`~/.config/pacer/config.json`:
 
 ```json
 {
-  "base_dir": "~/clade",
+  "base_dir": "~/pacer",
   "agent": "claude",
   "editor": "cursor",
   "repos": {}
