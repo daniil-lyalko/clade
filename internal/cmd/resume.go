@@ -271,11 +271,6 @@ func resumeTrackedExperiment(cfg *config.Config, state *config.State, exp *confi
 		return fmt.Errorf("worktree not found")
 	}
 
-	// Ensure agent config files exist (auto-upgrade existing worktrees with new features)
-	if err := EnsureAgentConfig(exp.Path); err != nil {
-		ui.Warn("Failed to ensure agent config: %v", err)
-	}
-
 	// Check for divergence if remote exists
 	git.Fetch(exp.Repo)
 	branchInfo := git.CheckBranch(exp.Repo, exp.Branch)
@@ -466,19 +461,6 @@ func tryAdoptUntrackedWorktree(cfg *config.Config, state *config.State, name str
 		return true // User declined, but we handled it
 	}
 
-	// Prompt for hooks injection
-	injectHooks := false
-	claudeDir := filepath.Join(selected.Worktree.Path, ".claude")
-	if _, err := os.Stat(claudeDir); os.IsNotExist(err) {
-		hooksPrompt := promptui.Prompt{
-			Label:     "Initialize .claude/ hooks in worktree",
-			IsConfirm: true,
-			Default:   "y",
-		}
-		_, err := hooksPrompt.Run()
-		injectHooks = err == nil
-	}
-
 	// Add to state
 	label := inferLabelFromBranch(selected.Worktree.Branch)
 	ticket := extractTicket(folderName)
@@ -498,11 +480,6 @@ func tryAdoptUntrackedWorktree(cfg *config.Config, state *config.State, name str
 	state.AddWorktree(selected.RepoName, wt)
 	if err := state.Save(cfg); err != nil {
 		ui.Warn("Failed to save state: %v", err)
-	}
-
-	// Initialize hooks if requested
-	if injectHooks {
-		InitRepo(selected.Worktree.Path)
 	}
 
 	ui.Success("Adopted worktree '%s'", folderName)
@@ -598,11 +575,6 @@ func adoptOrphanedBranch(cfg *config.Config, state *config.State, name string) e
 		}
 	}
 
-	// Auto-init if needed
-	if cfg.AutoInit {
-		InitRepo(wtPath)
-	}
-
 	// Add to v2 state as worktree
 	ticket := extractTicket(name)
 	label := inferLabelFromBranch(branch)
@@ -636,11 +608,6 @@ func resumeTrackedScratch(cfg *config.Config, state *config.State, scratch *conf
 		ui.Detail("The scratch folder may have been removed manually")
 		ui.Detail("Run: pacer cleanup %s", scratch.Name)
 		return fmt.Errorf("scratch folder not found")
-	}
-
-	// Ensure agent config files exist (auto-upgrade existing scratches with new features)
-	if err := EnsureAgentConfig(scratch.Path); err != nil {
-		ui.Warn("Failed to ensure agent config: %v", err)
 	}
 
 	// Update last used

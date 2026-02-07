@@ -306,13 +306,6 @@ func runProject(cmd *cobra.Command, args []string) error {
 			return wtErr
 		}
 
-		// Auto-init .claude/ if configured
-		if cfg.AutoInit {
-			if err := InitRepo(worktreePath); err != nil {
-				ui.Warn("Failed to init %s: %v", repo.FolderName, err)
-			}
-		}
-
 		// Copy gitignored files (.env, .npmrc, etc.)
 		if err := copyGitignoredFilesForProject(cfg, repo.SourcePath, worktreePath); err != nil {
 			ui.Warn("Failed to copy some files for %s: %v", repo.FolderName, err)
@@ -623,13 +616,6 @@ func runProjectAdd(cmd *cobra.Command, args []string) error {
 
 	if wtErr != nil {
 		return fmt.Errorf("failed to create worktree: %w", wtErr)
-	}
-
-	// Auto-init .claude/ if configured
-	if cfg.AutoInit {
-		if err := InitRepo(worktreePath); err != nil {
-			ui.Warn("Failed to init: %v", err)
-		}
 	}
 
 	// Copy gitignored files

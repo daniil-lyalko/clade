@@ -97,6 +97,9 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	// Check trust registry
 	results = append(results, checkTrustRegistry())
 
+	// Global hooks checks
+	results = append(results, checkGlobalHooks()...)
+
 	// Consistency checks - state vs filesystem vs git
 	results = append(results, checkOrphanedWorktrees()...)
 	results = append(results, checkUntrackedWorktrees()...)
@@ -745,6 +748,110 @@ func checkPrunableWorktrees() []checkResult {
 				},
 			})
 		}
+	}
+
+	return results
+}
+
+// checkGlobalHooks verifies global Claude/Cursor hook configuration
+func checkGlobalHooks() []checkResult {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return []checkResult{{
+			name:    "Global hooks",
+			ok:      false,
+			message: fmt.Sprintf("could not determine home directory: %v", err),
+		}}
+	}
+
+	var results []checkResult
+
+	// Check Claude global hook
+	claudeSettingsPath := filepath.Join(homeDir, ".claude", "settings.json")
+	if hasPacerHook(claudeSettingsPath, "claude") {
+		results = append(results, checkResult{
+			name:    "Global Claude hook",
+			ok:      true,
+			message: "pacer inject-context in ~/.claude/settings.json",
+		})
+	} else {
+		cp := claudeSettingsPath // capture for closure
+		results = append(results, checkResult{
+			name:    "Global Claude hook",
+			ok:      false,
+			warning: true,
+			message: "not found — run 'pacer setup'",
+			fixFunc: func() error {
+				_, err := mergeClaudeSettingsHooks(cp, false)
+				return err
+			},
+		})
+	}
+
+	// Check Cursor global hook
+	cursorHooksPath := filepath.Join(homeDir, ".cursor", "hooks.json")
+	if hasPacerHook(cursorHooksPath, "cursor") {
+		results = append(results, checkResult{
+			name:    "Global Cursor hook",
+			ok:      true,
+			message: "pacer inject-context in ~/.cursor/hooks.json",
+		})
+	} else {
+		cp := cursorHooksPath
+		results = append(results, checkResult{
+			name:    "Global Cursor hook",
+			ok:      false,
+			warning: true,
+			message: "not found — run 'pacer setup'",
+			fixFunc: func() error {
+				_, err := mergeCursorHooksJSON(cp, false)
+				return err
+			},
+		})
+	}
+
+	// Check Claude /drop command
+	claudeDropPath := filepath.Join(homeDir, ".claude", "commands", "drop.md")
+	if _, err := os.Stat(claudeDropPath); err == nil {
+		results = append(results, checkResult{
+			name:    "Global Claude /drop command",
+			ok:      true,
+			message: "~/.claude/commands/drop.md",
+		})
+	} else {
+		cp := claudeDropPath
+		results = append(results, checkResult{
+			name:    "Global Claude /drop command",
+			ok:      false,
+			warning: true,
+			message: "not found — run 'pacer setup'",
+			fixFunc: func() error {
+				_, err := writeDropCommandFile(cp, false)
+				return err
+			},
+		})
+	}
+
+	// Check Cursor /drop command
+	cursorDropPath := filepath.Join(homeDir, ".cursor", "commands", "drop.md")
+	if _, err := os.Stat(cursorDropPath); err == nil {
+		results = append(results, checkResult{
+			name:    "Global Cursor /drop command",
+			ok:      true,
+			message: "~/.cursor/commands/drop.md",
+		})
+	} else {
+		cp := cursorDropPath
+		results = append(results, checkResult{
+			name:    "Global Cursor /drop command",
+			ok:      false,
+			warning: true,
+			message: "not found — run 'pacer setup'",
+			fixFunc: func() error {
+				_, err := writeDropCommandFile(cp, false)
+				return err
+			},
+		})
 	}
 
 	return results

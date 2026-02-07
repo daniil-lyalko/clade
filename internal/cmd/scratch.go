@@ -109,12 +109,6 @@ func runScratch(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create scratch directory: %w", err)
 	}
 
-	// Initialize .claude/ configuration (scratch-specific, no git assumptions)
-	ui.Info("Initializing .claude/ configuration...")
-	if err := initScratchConfig(scratchPath); err != nil {
-		ui.Warn("Failed to initialize .claude/: %v", err)
-	}
-
 	// Create .pacer/metadata.json
 	ticket := extractTicketFromName(scratchName)
 	pacerMetadata := map[string]interface{}{
@@ -191,51 +185,3 @@ func extractTicketFromName(name string) string {
 	return ""
 }
 
-// initScratchConfig initializes .claude/ for scratch folders (no git assumptions)
-func initScratchConfig(scratchPath string) error {
-	claudeDir := filepath.Join(scratchPath, ".claude")
-	commandsDir := filepath.Join(claudeDir, "commands")
-
-	// Ensure directories exist
-	if err := os.MkdirAll(commandsDir, 0755); err != nil {
-		return err
-	}
-
-	// Write settings.json (same as regular init)
-	settingsPath := filepath.Join(claudeDir, "settings.json")
-	if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
-		if err := writeSettingsJSON(settingsPath); err != nil {
-			return err
-		}
-	}
-
-	// Write drop.md command
-	dropPath := filepath.Join(commandsDir, "drop.md")
-	if _, err := os.Stat(dropPath); os.IsNotExist(err) {
-		if err := writeDropCommand(dropPath); err != nil {
-			return err
-		}
-	}
-
-	// Cursor hooks and commands
-	cursorDir := filepath.Join(scratchPath, ".cursor")
-	cursorCommandsDir := filepath.Join(cursorDir, "commands")
-	if err := os.MkdirAll(cursorCommandsDir, 0755); err != nil {
-		return err
-	}
-	cursorHooksPath := filepath.Join(cursorDir, "hooks.json")
-	if _, err := os.Stat(cursorHooksPath); os.IsNotExist(err) {
-		if err := writeCursorHooksJSON(cursorHooksPath); err != nil {
-			return err
-		}
-	}
-	cursorDropPath := filepath.Join(cursorCommandsDir, "drop.md")
-	if _, err := os.Stat(cursorDropPath); os.IsNotExist(err) {
-		if err := writeCursorDropCommand(cursorDropPath); err != nil {
-			return err
-		}
-	}
-
-	// Note: No .gitignore update for scratches (they're not git repos)
-	return nil
-}
