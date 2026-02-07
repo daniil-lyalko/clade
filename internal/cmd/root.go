@@ -63,10 +63,10 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&experimentalFlag, "experimental", false, "Enable experimental features (project command)")
 
 	// Verbose flag for debug output
-	rootCmd.PersistentFlags().BoolVarP(&verboseFlag, "verbose", "V", false, "Enable verbose debug output")
+	rootCmd.PersistentFlags().BoolVarP(&verboseFlag, "verbose", "v", false, "Enable verbose debug output")
 
 	// Version flag
-	rootCmd.Flags().BoolVarP(&versionFlag, "version", "v", false, "Print version and exit")
+	rootCmd.Flags().BoolVar(&versionFlag, "version", false, "Print version and exit")
 
 	// Common flags used by multiple commands (editor, agent control)
 	// These are persistent so they're available to all subcommands
@@ -171,6 +171,25 @@ func runInteractiveDashboard(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load state: %w", err)
 	}
 
+	// Suggest setup if hooks not installed and user has agent/editor configured
+	if (cfg.Agent != "" || cfg.Editor != "") && !globalHooksInstalled() {
+		fmt.Println()
+		ui.Info("Global hooks not yet installed")
+		ui.Detail("This lets pacer inject context into every AI coding session")
+		prompt := promptui.Prompt{
+			Label:     "Run setup now",
+			IsConfirm: true,
+			Default:   "y",
+		}
+		if _, err := prompt.Run(); err == nil {
+			fmt.Println()
+			runSetup(setupCmd, []string{})
+		} else {
+			ui.Detail("Run 'pacer setup' anytime to install hooks")
+		}
+		fmt.Println()
+	}
+
 	// Show dashboard
 	showDashboard(cfg, state)
 
@@ -189,7 +208,7 @@ func showDashboard(cfg *config.Config, state *config.State) {
 	// Show legacy experiments (most recent first, limit to 3)
 	if len(state.Experiments) > 0 {
 		hasContent = true
-		ui.Header("Legacy experiments:")
+		ui.Header("Legacy worktrees (v1):")
 		exps := sortExperimentsByLastUsed(state.Experiments)
 		shown := 0
 		for _, exp := range exps {
@@ -552,6 +571,13 @@ func showActionPicker(cfg *config.Config, state *config.State) error {
 			Description: "Diagnose configuration issues",
 			Handler: func() error {
 				return runDoctor(doctorCmd, []string{})
+			},
+		},
+		action{
+			Name:        "Setup",
+			Description: "Install global hooks (one-time)",
+			Handler: func() error {
+				return runSetup(setupCmd, []string{})
 			},
 		},
 	)

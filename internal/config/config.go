@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/daniil-lyalko/pacer/internal/git"
 	"github.com/manifoldco/promptui"
 )
 
@@ -99,6 +100,11 @@ func Load() (*Config, error) {
 				}
 				if err := cfg.Save(); err != nil {
 					return nil, err
+				}
+				// After first-run wizard, check if user is in a git repo and offer to register it
+				if err := offerRepoRegistration(cfg); err != nil {
+					// Non-fatal - just print warning
+					fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
 				}
 				return cfg, nil
 			}
@@ -319,4 +325,58 @@ func (c *Config) GetLabelConfig(label string) (LabelConfig, bool) {
 		return cfg, true
 	}
 	return LabelConfig{}, false
+}
+
+// offerRepoRegistration detects if the user is in a git repo and offers to register it.
+// Called after the first-run wizard completes.
+func offerRepoRegistration(cfg *Config) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil // Can't get cwd, skip silently
+	}
+
+	if !git.IsGitRepo(cwd) {
+		return nil // Not in a git repo, nothing to do
+	}
+
+	repoRoot, err := git.GetRepoRoot(cwd)
+	if err != nil {
+		return nil // Can't get repo root, skip
+	}
+
+	repoName := git.GetRepoName(repoRoot)
+
+	// Check if already registered
+	for _, path := range cfg.Repos {
+		if ExpandPath(path) == repoRoot {
+			return nil // Already registered
+		}
+	}
+
+	// Offer to register
+	fmt.Println()
+	fmt.Printf("  Detected git repository: %s\n", repoName)
+	fmt.Printf("  Path: %s\n", repoRoot)
+	fmt.Println()
+
+	prompt := promptui.Prompt{
+		Label:     "Register this repository for quick access",
+		IsConfirm: true,
+		Default:   "y",
+	}
+
+	if _, err := prompt.Run(); err != nil {
+		// User declined
+		fmt.Println("  Skipped. You can register it later with: pacer repo add <path>")
+		return nil
+	}
+
+	// Register the repo
+	cfg.Repos[repoName] = repoRoot
+	if err := cfg.Save(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	fmt.Printf("  Registered '%s'\n", repoName)
+	return nil
 }

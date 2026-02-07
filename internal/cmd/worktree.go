@@ -67,22 +67,10 @@ func CreateWorktree(name string, wtCfg WorktreeConfig, opts WorktreeOptions) err
 		branch = opts.BranchFlag
 	} else {
 		// Build default branch name - with or without prefix
-		var defaultBranch string
 		if wtCfg.BranchPrefix != "" {
-			defaultBranch = wtCfg.BranchPrefix + "/" + name
+			branch = wtCfg.BranchPrefix + "/" + name
 		} else {
-			defaultBranch = name
-		}
-		prompt := promptui.Prompt{
-			Label:   "Branch name",
-			Default: defaultBranch,
-		}
-		branch, err = prompt.Run()
-		if err != nil {
-			return err
-		}
-		if branch == "" {
-			branch = defaultBranch
+			branch = name
 		}
 	}
 
@@ -163,31 +151,6 @@ func CreateWorktree(name string, wtCfg WorktreeConfig, opts WorktreeOptions) err
 		return fmt.Errorf("failed to create worktree: %w", err)
 	}
 	ui.Detail("Based on: %s", baseBranch)
-
-	// Copy .claude/ directory if it exists in source repo
-	sourceClaudeDir := filepath.Join(repoPath, ".claude")
-	if _, err := os.Stat(sourceClaudeDir); err == nil {
-		ui.Info("Copying .claude/ configuration...")
-		if err := util.CopyDir(sourceClaudeDir, filepath.Join(wtPath, ".claude")); err != nil {
-			ui.Warn("Failed to copy .claude/ directory: %v", err)
-		}
-	}
-
-	// Copy .cursor/ directory if it exists in source repo
-	sourceCursorDir := filepath.Join(repoPath, ".cursor")
-	if _, err := os.Stat(sourceCursorDir); err == nil {
-		ui.Info("Copying .cursor/ configuration...")
-		if err := util.CopyDir(sourceCursorDir, filepath.Join(wtPath, ".cursor")); err != nil {
-			ui.Warn("Failed to copy .cursor/ directory: %v", err)
-		}
-	}
-
-	// Ensure required config files exist (.claude/ and .cursor/)
-	if cfg.AutoInit {
-		if err := EnsureAgentConfig(wtPath); err != nil {
-			ui.Warn("Failed to ensure agent config: %v", err)
-		}
-	}
 
 	// Copy gitignored files (.env, .npmrc, etc.)
 	if copyGitignoredFilesImpl != nil {
@@ -307,11 +270,6 @@ func ResumeWorktree(cfg *config.Config, state *config.State, repoName string, wt
 		ui.Detail("The worktree may have been removed manually")
 		ui.Detail("Run: pacer cleanup %s", wt.Name)
 		return fmt.Errorf("worktree not found")
-	}
-
-	// Ensure agent config files exist (auto-upgrade existing worktrees with new features)
-	if err := EnsureAgentConfig(wtPath); err != nil {
-		ui.Warn("Failed to ensure agent config: %v", err)
 	}
 
 	// Check for divergence if remote exists

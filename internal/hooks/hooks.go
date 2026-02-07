@@ -2,6 +2,7 @@ package hooks
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -146,6 +147,11 @@ func RunHooks(event Event, env *Env) []Result {
 		}
 	}
 
+	// Write results to .pacer/last-hook-results.json for visibility in inject-context
+	if env.Path != "" {
+		writeHookResults(env.Path, results)
+	}
+
 	return results
 }
 
@@ -194,4 +200,43 @@ func HasHooks(event Event, repoPath string) bool {
 	}
 
 	return false
+}
+
+// writeHookResults writes hook execution results to .pacer/last-hook-results.json
+// This allows inject-context to surface hook failures at session start.
+func writeHookResults(worktreePath string, results []Result) {
+	resultsPath := filepath.Join(worktreePath, ".pacer", "last-hook-results.json")
+
+	// Ensure .pacer directory exists
+	if err := os.MkdirAll(filepath.Dir(resultsPath), 0755); err != nil {
+		return // Silent failure - this is best-effort
+	}
+
+	// Convert results to JSON-serializable format
+	type jsonResult struct {
+		Command  string  `json:"command"`
+		Output   string  `json:"output,omitempty"`
+		Error    string  `json:"error,omitempty"`
+		Duration float64 `json:"duration_seconds"`
+	}
+
+	var jsonResults []jsonResult
+	for _, r := range results {
+		jr := jsonResult{
+			Command:  r.Command,
+			Output:   r.Output,
+			Duration: r.Duration.Seconds(),
+		}
+		if r.Error != nil {
+			jr.Error = r.Error.Error()
+		}
+		jsonResults = append(jsonResults, jr)
+	}
+
+	data, err := json.MarshalIndent(jsonResults, "", "  ")
+	if err != nil {
+		return
+	}
+
+	os.WriteFile(resultsPath, data, 0644)
 }

@@ -6,6 +6,7 @@ import (
 	"hash/fnv"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/daniil-lyalko/pacer/internal/context"
@@ -83,6 +84,12 @@ func runInjectContext(cmd *cobra.Command, args []string) error {
 	// Format context
 	output := context.FormatContext(ctx)
 
+	// Check for recent hook failures
+	if hookWarnings := checkHookFailures(dir); hookWarnings != "" {
+		// Prepend hook warnings to context
+		output = hookWarnings + "\n\n" + output
+	}
+
 	// Auto-detect output format:
 	// - Claude Code sets CLAUDE_PROJECT_DIR → plain text to stdout
 	// - Cursor does not set CLAUDE_PROJECT_DIR → JSON with additional_context
@@ -145,4 +152,54 @@ func wasRecentlyInjected(dir string) bool {
 func markInjected(dir string) {
 	// Security: Use restrictive permissions (owner-only)
 	os.WriteFile(dedupPath(dir), []byte("1"), 0600)
+}
+
+// checkHookFailures reads .pacer/last-hook-results.json and returns warnings for failed hooks.
+func checkHookFailures(dir string) string {
+	resultsPath := filepath.Join(dir, ".pacer", "last-hook-results.json")
+
+	data, err := os.ReadFile(resultsPath)
+	if err != nil {
+		return "" // No results file or can't read - skip silently
+	}
+
+	type jsonResult struct {
+		Command  string  `json:"command"`
+		Output   string  `json:"output,omitempty"`
+		Error    string  `json:"error,omitempty"`
+		Duration float64 `json:"duration_seconds"`
+	}
+
+	var results []jsonResult
+	if err := json.Unmarshal(data, &results); err != nil {
+		return ""
+	}
+
+	// Check if results are recent (within last 5 minutes)
+	info, err := os.Stat(resultsPath)
+	if err != nil || time.Since(info.ModTime()) > 5*time.Minute {
+		return "" // Stale results, ignore
+	}
+
+	// Build warning message for failed hooks
+	var warnings []string
+	for _, r := range results {
+		if r.Error != "" {
+			warnings = append(warnings, fmt.Sprintf("- %s: %s", r.Command, r.Error))
+		}
+	}
+
+	if len(warnings) == 0 {
+		return ""
+	}
+
+	var buf strings.Builder
+	buf.WriteString("## Hook Execution Warnings\n\n")
+	buf.WriteString("The following lifecycle hooks failed:\n\n")
+	for _, w := range warnings {
+		buf.WriteString(w + "\n")
+	}
+	buf.WriteString("\nYou may need to run these commands manually.\n")
+
+	return buf.String()
 }
