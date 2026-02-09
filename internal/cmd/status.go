@@ -20,13 +20,13 @@ var statusCmd = &cobra.Command{
 	Long: `Display clade context information for the current directory.
 
 Shows:
-  - Experiment/project metadata
+  - Worktree/project metadata
   - Context files (CLAUDE.md, DROPBAG.md, TICKET.md)
   - Git status summary
   - Recent commits
 
 Works in any directory:
-  - In a clade experiment: Full context info
+  - In a clade worktree: Full context info
   - In a regular git repo: Basic info + suggestion to init
   - Not in git repo: Clear message
 
@@ -171,7 +171,7 @@ func printStatusJSON(repoRoot string, metadata *context.CladeMetadata) error {
 
 func printCladeStatus(repoRoot string, metadata *context.CladeMetadata) {
 	// Header with type
-	typeLabel := "Experiment"
+	typeLabel := "Worktree"
 	if metadata.Type == "project" {
 		typeLabel = "Project"
 	}
@@ -232,7 +232,7 @@ func printBasicStatus(repoRoot string) {
 	}
 
 	ui.KeyValue("Path", repoRoot)
-	fmt.Printf("  %s\n", ui.Dim("(not a clade experiment)"))
+	fmt.Printf("  %s\n", ui.Dim("(not a clade worktree)"))
 
 	// Check if .claude/ exists
 	fmt.Println()

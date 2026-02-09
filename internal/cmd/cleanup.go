@@ -292,14 +292,14 @@ func cleanupWorktree(cfg *config.Config, state *config.State, repoName string, w
 }
 
 func cleanupExperiment(cfg *config.Config, state *config.State, key string, exp *config.Experiment) error {
-	ui.Header("Experiment (legacy): %s", exp.Name)
+	ui.Header("Worktree (legacy): %s", exp.Name)
 	ui.KeyValue("Path", exp.Path)
 	ui.KeyValue("Branch", exp.Branch)
 	fmt.Println()
 
 	// Dry-run mode
 	if cleanupDryRunFlag {
-		ui.Info("[DRY RUN] Would clean up experiment: %s", exp.Name)
+		ui.Info("[DRY RUN] Would clean up worktree: %s", exp.Name)
 		ui.Detail("  Path: %s", exp.Path)
 		ui.Detail("  Branch: %s", exp.Branch)
 		// Check for dropbags
@@ -403,7 +403,7 @@ func cleanupExperiment(cfg *config.Config, state *config.State, key string, exp 
 		ui.Warn("Failed to save state: %v", err)
 	}
 
-	ui.Success("Cleaned up experiment '%s'", exp.Name)
+	ui.Success("Cleaned up worktree '%s'", exp.Name)
 	return nil
 }
 

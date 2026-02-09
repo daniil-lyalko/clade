@@ -28,7 +28,7 @@ var scratchCmd = &cobra.Command{
 	Short: "Create a no-git scratch folder for documents or analysis",
 	Long: `Create a scratch folder without git for quick document analysis or ad-hoc work.
 
-Unlike experiments, scratch folders:
+Unlike worktrees, scratch folders:
   - Have no git repository or worktree
   - Are for temporary document analysis, file sharing, etc.
   - Still get .claude/ config for hooks and context

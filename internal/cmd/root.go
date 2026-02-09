@@ -21,6 +21,7 @@ var Version = "dev"
 var experimentalFlag bool
 var versionFlag bool
 var verboseFlag bool
+var quietFlag bool
 
 var rootCmd = &cobra.Command{
 	Use:   "clade [name]",
@@ -39,8 +40,9 @@ Shortcut:
 	Args:                  cobra.ArbitraryArgs,
 	DisableFlagsInUseLine: true,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		// Wire up verbose flag to ui package
+		// Wire up verbose and quiet flags to ui package
 		ui.Verbose = verboseFlag
+		ui.Quiet = quietFlag
 
 		// Check for old "pacer" directories and offer to migrate
 		checkAndMigrateFromPacer()
@@ -64,6 +66,9 @@ func init() {
 
 	// Verbose flag for debug output
 	rootCmd.PersistentFlags().BoolVarP(&verboseFlag, "verbose", "v", false, "Enable verbose debug output")
+
+	// Quiet flag to suppress informational output
+	rootCmd.PersistentFlags().BoolVarP(&quietFlag, "quiet", "q", false, "Suppress informational output")
 
 	// Version flag
 	rootCmd.Flags().BoolVar(&versionFlag, "version", false, "Print version and exit")

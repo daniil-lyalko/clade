@@ -31,7 +31,7 @@ var workCmd = &cobra.Command{
 By default, creates a worktree with no branch prefix (branch name = worktree name).
 Use -t to add a type/prefix:
 
-  spike    Throwaway experiment (spike/ branch)
+  spike    Throwaway exploration (spike/ branch)
   feature  New functionality (feat/ branch)
   bug      Bug fix (fix/ branch)
   chore    Maintenance/refactor (chore/ branch)

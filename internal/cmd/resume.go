@@ -642,7 +642,7 @@ func resumeTrackedScratch(cfg *config.Config, state *config.State, scratch *conf
 	})
 }
 
-// completeResumableNames provides shell completion for experiment/project/scratch names
+// completeResumableNames provides shell completion for worktree/project/scratch names
 func completeResumableNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if len(args) != 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp

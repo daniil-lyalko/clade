@@ -2,6 +2,7 @@ package git
 
 import (
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -73,10 +74,7 @@ func HasUncommittedChanges(repoPath string) (bool, error) {
 
 // GetRecentCommits returns recent commit messages
 func GetRecentCommits(repoPath string, count int) ([]string, error) {
-	cmd := exec.Command("git", "log", "--oneline", "-n", string(rune('0'+count)))
-	if count > 9 {
-		cmd = exec.Command("git", "log", "--oneline", "-n", "10")
-	}
+	cmd := exec.Command("git", "log", "--oneline", "-n", strconv.Itoa(count))
 	cmd.Dir = repoPath
 	output, err := cmd.Output()
 	if err != nil {

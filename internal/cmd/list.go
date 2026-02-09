@@ -88,7 +88,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	// List v1 experiments (legacy format)
 	if len(state.Experiments) > 0 {
 		hasContent = true
-		ui.Header("Experiments (legacy):")
+		ui.Header("Legacy worktrees (v1):")
 		for _, exp := range state.Experiments {
 			printExperiment(exp)
 		}

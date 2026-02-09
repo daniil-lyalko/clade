@@ -74,7 +74,7 @@ func runOpen(cmd *cobra.Command, args []string) error {
 
 func openInteractive(cfg *config.Config, state *config.State) error {
 	if len(state.Experiments) == 0 && len(state.Projects) == 0 && len(state.Scratches) == 0 {
-		return fmt.Errorf("no experiments, projects, or scratch folders")
+		return fmt.Errorf("no worktrees, projects, or scratch folders")
 	}
 
 	type pickItem struct {
