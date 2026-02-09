@@ -116,7 +116,7 @@ func TestReadDropbag_EmptyDirectory(t *testing.T) {
 func TestReadDropbag_FindsNewest(t *testing.T) {
 	// Create temp directory structure
 	tmpDir := t.TempDir()
-	dropbagsDir := fmt.Sprintf("%s/.pacer/dropbags", tmpDir)
+	dropbagsDir := fmt.Sprintf("%s/.clade/dropbags", tmpDir)
 	assert.NoError(t, mkdir(dropbagsDir, 0755))
 
 	// Create multiple DROPBAG files with different timestamps
@@ -141,7 +141,7 @@ func TestReadDropbag_FindsNewest(t *testing.T) {
 
 func TestReadDropbag_SkipsEmptyFiles(t *testing.T) {
 	tmpDir := t.TempDir()
-	dropbagsDir := fmt.Sprintf("%s/.pacer/dropbags", tmpDir)
+	dropbagsDir := fmt.Sprintf("%s/.clade/dropbags", tmpDir)
 	assert.NoError(t, mkdir(dropbagsDir, 0755))
 
 	// Create empty DROPBAG file
@@ -156,7 +156,7 @@ func TestReadDropbag_SkipsEmptyFiles(t *testing.T) {
 
 func TestReadDropbag_SkipsNonDropbagFiles(t *testing.T) {
 	tmpDir := t.TempDir()
-	dropbagsDir := fmt.Sprintf("%s/.pacer/dropbags", tmpDir)
+	dropbagsDir := fmt.Sprintf("%s/.clade/dropbags", tmpDir)
 	assert.NoError(t, mkdir(dropbagsDir, 0755))
 
 	// Create files that should be ignored

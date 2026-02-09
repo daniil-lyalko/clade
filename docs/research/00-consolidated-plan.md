@@ -1,4 +1,4 @@
-# Pacer Improvement Plan — Consolidated from Research Team
+# Clade Improvement Plan — Consolidated from Research Team
 
 **Date:** 2026-02-06
 **Branch:** `feat/global-setup`
@@ -8,7 +8,7 @@
 
 ## Strategic North Star
 
-> Pacer's moat is **context orchestration** — the DROPBAG/inject-context/SessionStart chain. Worktree management alone is commoditized (Worktrunk, gwq, gtr). Nobody else builds session-aware, cross-worktree, multi-agent context orchestration. **Deepen the moat first, then widen.**
+> Clade's moat is **context orchestration** — the DROPBAG/inject-context/SessionStart chain. Worktree management alone is commoditized (Worktrunk, gwq, gtr). Nobody else builds session-aware, cross-worktree, multi-agent context orchestration. **Deepen the moat first, then widen.**
 >
 > — Cross-referenced from all 4 reports
 
@@ -18,10 +18,10 @@
 
 | Item | Status | Report |
 |------|--------|--------|
-| `pacer setup` — global hooks installer | Done | — |
+| `clade setup` — global hooks installer | Done | — |
 | Preview → Confirm → Apply flow for setup | Done | Sharma P1 |
 | Dashboard prompts setup when hooks missing | Done | Sharma P0 |
-| Clade → Pacer migration in hook files | Done | — |
+| Clade → Clade migration in hook files | Done | — |
 
 ---
 
@@ -44,16 +44,16 @@ High impact, low effort. These are the P0s that all reviewers flagged independen
 **Decision doc:** [05-decision-auto-dropbag.md](05-decision-auto-dropbag.md) (ADR-001)
 **Files:** New `internal/cmd/auto_dropbag.go`, `internal/cmd/context_warning.go`, updates to `setup.go`
 **Change:** Three-hook architecture:
-- `Stop` (async) → `pacer auto-dropbag` writes DROPBAG.md (debounced: 60s + meaningful changes only)
-- `PreCompact` → `pacer context-warning` prints calm notification to stderr suggesting `/drop` or fresh restart
-- `SessionStart` → existing `pacer inject-context` reads DROPBAG + state (labels auto vs manual source)
+- `Stop` (async) → `clade auto-dropbag` writes DROPBAG.md (debounced: 60s + meaningful changes only)
+- `PreCompact` → `clade context-warning` prints calm notification to stderr suggesting `/drop` or fresh restart
+- `SessionStart` → existing `clade inject-context` reads DROPBAG + state (labels auto vs manual source)
 - Manual `/drop` remains the gold standard for human-curated checkpoints
 **Rationale:** PreCompact cannot inject into post-compaction context (no mechanism exists, known bugs). Stop is the only reliable persistence point — most sessions end before compaction fires. Anthropic's own `claude-progress.txt` pattern validates this approach.
 
 ### 1.4 Surface hook failures in inject-context
 **Reports:** Chen (P0)
 **File:** `internal/cmd/inject.go`
-**Change:** Check for `.pacer/last-hook-results.json` (written by lifecycle hooks) and include failures in SessionStart output. Claude sees "WARNING: npm install failed" at session start instead of discovering it mid-session.
+**Change:** Check for `.clade/last-hook-results.json` (written by lifecycle hooks) and include failures in SessionStart output. Claude sees "WARNING: npm install failed" at session start instead of discovering it mid-session.
 
 ### 1.5 Fix `-v` flag convention
 **Reports:** Tanaka (flag design)
@@ -65,9 +65,9 @@ High impact, low effort. These are the P0s that all reviewers flagged independen
 **Files:** `internal/cmd/root.go` (dashboard), `internal/cmd/resume.go` (picker)
 **Change:** Replace "Legacy experiments" with "Legacy worktrees" or just show them as regular worktrees with a `(v1)` tag. The word "experiment" confuses new users.
 
-### 1.7 Add `pacer path <name>` command
+### 1.7 Add `clade path <name>` command
 **Reports:** Tanaka (composability)
-**Change:** Print worktree path to stdout and exit. Enables `cd $(pacer path foo)` and `code $(pacer path foo)`. Currently requires parsing `pacer list --json | jq`.
+**Change:** Print worktree path to stdout and exit. Enables `cd $(clade path foo)` and `code $(clade path foo)`. Currently requires parsing `clade list --json | jq`.
 
 ---
 
@@ -97,7 +97,7 @@ Medium effort. These strengthen context management and improve the CLI for power
 ### 2.5 Expand doctor checks
 **Reports:** Chen (P1), Sharma
 **File:** `internal/cmd/doctor.go`
-**New checks:** Git version >= 2.20, disk space in base_dir, agent version (not just existence), direnv/mise installed, `.gitignore` includes `.pacer/`, inject-context execution time.
+**New checks:** Git version >= 2.20, disk space in base_dir, agent version (not just existence), direnv/mise installed, `.gitignore` includes `.clade/`, inject-context execution time.
 
 ### 2.6 `PreToolUse` write validation hook
 **Reports:** Chen (P2)
@@ -110,15 +110,15 @@ Medium effort. These strengthen context management and improve the CLI for power
 
 ### 2.8 `SessionEnd` hook for project memory
 **Reports:** Vasquez (short-term)
-**Change:** On session end, update `~/pacer/repos/{repo}/memory.md` with key decisions. Accumulates knowledge across worktrees. Addresses the "spike knowledge is lost by day 2 of feature" problem.
+**Change:** On session end, update `~/clade/repos/{repo}/memory.md` with key decisions. Accumulates knowledge across worktrees. Addresses the "spike knowledge is lost by day 2 of feature" problem.
 
 ### 2.9 Cross-worktree context import
 **Reports:** Vasquez (medium-term)
-**Change:** `pacer context import try-redis` — inject another worktree's DROPBAG, key commits, and changed files into the current session. Bridges the spike-to-feature gap.
+**Change:** `clade context import try-redis` — inject another worktree's DROPBAG, key commits, and changed files into the current session. Bridges the spike-to-feature gap.
 
-### 2.10 Stack templates for `pacer init`
+### 2.10 Stack templates for `clade init`
 **Reports:** Chen (P2)
-**Change:** `pacer init --template node` / `go` / `python`. Pre-populates `.pacer/hooks.yaml` with stack-appropriate automation (npm ci, go mod download, etc.).
+**Change:** `clade init --template node` / `go` / `python`. Pre-populates `.clade/hooks.yaml` with stack-appropriate automation (npm ci, go mod download, etc.).
 
 ---
 
@@ -130,9 +130,9 @@ High effort, transformative impact. These are the big bets.
 **Reports:** Sharma (P2), Tanaka
 **Change:** Replace `promptui` with Bubbletea for the dashboard only. Multi-column layout, single-key shortcuts, inline context preview, real-time updates. The "k9s for AI coding" vision. Incremental — all CLI commands keep working.
 
-### 3.2 `pacer team` — agent teams + worktrees
+### 3.2 `clade team` — agent teams + worktrees
 **Reports:** Vasquez (medium-term, transformative)
-**Change:** `pacer team api-migration --repos my-api,my-frontend` creates matching worktrees across repos, spawns an agent team with one teammate per worktree, injects per-worktree context. Bridges Pacer's physical isolation (worktrees) with Claude's logical coordination (tasks, messaging).
+**Change:** `clade team api-migration --repos my-api,my-frontend` creates matching worktrees across repos, spawns an agent team with one teammate per worktree, injects per-worktree context. Bridges Clade's physical isolation (worktrees) with Claude's logical coordination (tasks, messaging).
 
 ### 3.3 Contextual memory graph
 **Reports:** Vasquez (bold bet #2)
@@ -140,7 +140,7 @@ High effort, transformative impact. These are the big bets.
 
 ### 3.4 Plugin distribution
 **Reports:** Vasquez (immediate strategic move)
-**Change:** Package Pacer's hook integration as a Claude Code plugin. `/plugin install pacer` instead of `pacer init` + `pacer setup`. Hooks, skills, context injection in one installable unit.
+**Change:** Package Clade's hook integration as a Claude Code plugin. `/plugin install clade` instead of `clade init` + `clade setup`. Hooks, skills, context injection in one installable unit.
 
 ### 3.5 Parallel git operations
 **Reports:** Tanaka (performance)
@@ -149,15 +149,15 @@ High effort, transformative impact. These are the big bets.
 
 ### 3.6 Shell integration wrapper
 **Reports:** Tanaka (composability)
-**Change:** Ship a shell function via `pacer shell-init` that wraps `pacer resume` to also `cd` the parent shell into the worktree. Add `pacer exec <name> -- <cmd>` for running commands inside worktrees without cd.
+**Change:** Ship a shell function via `clade shell-init` that wraps `clade resume` to also `cd` the parent shell into the worktree. Add `clade exec <name> -- <cmd>` for running commands inside worktrees without cd.
 
-### 3.7 `pacer cleanup --pr`
+### 3.7 `clade cleanup --pr`
 **Reports:** Chen (P3)
 **Change:** Integrate with `gh pr create` in cleanup flow. Creates PR, links JIRA ticket, assigns reviewers. Closes the branch lifecycle loop.
 
 ### 3.8 Autonomous worktree swarms
 **Reports:** Vasquez (bold bet #1)
-**Change:** `pacer swarm PROJ-123 --plan` — analyzes a JIRA ticket, decomposes into subtasks, creates worktrees, launches agent team, monitors progress. Depends on Phase 3.2 (team command) and agent team maturity.
+**Change:** `clade swarm PROJ-123 --plan` — analyzes a JIRA ticket, decomposes into subtasks, creates worktrees, launches agent team, monitors progress. Depends on Phase 3.2 (team command) and agent team maturity.
 
 ---
 
@@ -170,7 +170,7 @@ High effort, transformative impact. These are the big bets.
 | `CreateWorktreeNew` fetches synchronously — blocks on slow connections | Tanaka | `internal/git/branch.go:136` | P2 |
 | `cleanup` doesn't check for `git worktree lock` before removing | Tanaka | cleanup.go | P2 |
 | Global hooks.yaml has no integrity check (unlike per-repo TOFU) | Chen | hooks system | P3 |
-| Documentation mismatch: README says `pacer init` creates `.claude/settings.json` | Sharma | README.md | P1 |
+| Documentation mismatch: README says `clade init` creates `.claude/settings.json` | Sharma | README.md | P1 |
 
 ---
 
@@ -192,7 +192,7 @@ Shows which reports independently identified the same issue. Items flagged by 3+
 | Expand doctor | | | X | X | 2 |
 | Progressive disclosure | | | | X | 1 |
 | Parallel git ops (perf) | | X | | | 1 |
-| `pacer path` command | | X | | | 1 |
+| `clade path` command | | X | | | 1 |
 | Cross-worktree context | X | | | | 1 |
 | Memory graph | X | | | X | 2 |
 | Kill "experiment" naming | | | | X | 1 |
@@ -211,7 +211,7 @@ Shows which reports independently identified the same issue. Items flagged by 3+
 
 3. **"Workspace" vs "Worktree"**: Sharma suggests user-facing copy should say "workspace" instead of "worktree." The underlying git concept is worktree, but the user experience is "an isolated workspace." Worth the rename?
 
-4. **`project` command**: Currently `--experimental`. Either commit to multi-repo support (which feeds into `pacer team`) or remove it to reduce concept count. Tanaka and Sharma both flagged concept bloat.
+4. **`project` command**: Currently `--experimental`. Either commit to multi-repo support (which feeds into `clade team`) or remove it to reduce concept count. Tanaka and Sharma both flagged concept bloat.
 
 5. **Bubbletea migration**: Large effort but high impact. Worth starting in Phase 2 (dashboard only) or defer to Phase 3?
 

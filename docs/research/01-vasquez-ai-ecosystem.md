@@ -1,24 +1,24 @@
-# STRATEGIC MEMO: Pacer in the 2026 Claude Code Ecosystem
+# STRATEGIC MEMO: Clade in the 2026 Claude Code Ecosystem
 
 **From:** Dr. Elena Vasquez, Distinguished Engineer, Anthropic
 **Date:** February 6, 2026
-**To:** Daniil Lyalko, Pacer Creator
-**Subject:** Pacer's Position and Strategic Opportunities in the Rapidly Evolving AI Coding Landscape
+**To:** Daniil Lyalko, Clade Creator
+**Subject:** Clade's Position and Strategic Opportunities in the Rapidly Evolving AI Coding Landscape
 
 ---
 
 ## 1. Claude Code Ecosystem in 2026: The Full Picture
 
-The Claude Code platform has undergone a dramatic expansion since Pacer's initial conception. As of today -- literally today, February 6, 2026 -- Anthropic shipped Claude Opus 4.6 with agent teams. Let me detail the full state of the ecosystem that Pacer now operates within.
+The Claude Code platform has undergone a dramatic expansion since Clade's initial conception. As of today -- literally today, February 6, 2026 -- Anthropic shipped Claude Opus 4.6 with agent teams. Let me detail the full state of the ecosystem that Clade now operates within.
 
 ### 1.1 Hook Lifecycle (Complete, 12 Events)
 
-Claude Code now exposes **twelve** hook events across the full agent lifecycle. Pacer currently uses exactly one: `SessionStart`. Here is the complete set:
+Claude Code now exposes **twelve** hook events across the full agent lifecycle. Clade currently uses exactly one: `SessionStart`. Here is the complete set:
 
 | Hook Event | Phase | What It Does |
 |---|---|---|
 | `Setup` | Init | Fires during initialization or maintenance |
-| `SessionStart` | Session | Beginning of a new session -- **Pacer uses this** |
+| `SessionStart` | Session | Beginning of a new session -- **Clade uses this** |
 | `SessionEnd` | Session | Session closes; cleanup or final reporting |
 | `UserPromptSubmit` | Conversation | User submits prompt, before Claude processes it |
 | `PreToolUse` | Tool | After Claude picks a tool, before execution; can approve/block/modify |
@@ -30,7 +30,7 @@ Claude Code now exposes **twelve** hook events across the full agent lifecycle. 
 | `Stop` | Completion | Main agent finishes responding |
 | `SubagentStop` | Completion | Subagent finishes responding |
 
-Critical detail: for `UserPromptSubmit` and `SessionStart`, **stdout is injected directly into Claude's context**. For `PreToolUse`, hook scripts can return JSON to approve, block, or modify tool parameters. This is a rich control plane that Pacer barely touches.
+Critical detail: for `UserPromptSubmit` and `SessionStart`, **stdout is injected directly into Claude's context**. For `PreToolUse`, hook scripts can return JSON to approve, block, or modify tool parameters. This is a rich control plane that Clade barely touches.
 
 **Sources:**
 - [Hooks reference - Claude Code Docs](https://code.claude.com/docs/en/hooks)
@@ -43,7 +43,7 @@ In 2026, custom slash commands and skills are a **unified extensibility system**
 
 Key capability: skills can **auto-invoke** -- Claude detects relevance based on the `description` field and loads the skill without explicit user action. This can be disabled with `disable-model-invocation: true`.
 
-Pacer's `/drop` command is currently a static markdown file. It could be a full skill with auto-detection logic.
+Clade's `/drop` command is currently a static markdown file. It could be a full skill with auto-detection logic.
 
 **Sources:**
 - [Extend Claude with skills - Claude Code Docs](https://code.claude.com/docs/en/skills)
@@ -54,7 +54,7 @@ Pacer's `/drop` command is currently a static markdown file. It could be a full 
 
 Claude Code now has a full **plugin architecture** -- shareable packages that bundle commands, subagents, skills, hooks, and MCP servers into installable units. There is a community marketplace at [claudemarketplaces.com](https://claudemarketplaces.com/). Anthropic maintains an [official plugin directory](https://github.com/anthropics/claude-plugins-official). Plugins can be installed per-project via `/plugin` or configured in `.claude/settings.json`.
 
-This is where Pacer could distribute its hooks, skills, and context injection as a single installable unit rather than requiring `pacer init` + `pacer setup`.
+This is where Clade could distribute its hooks, skills, and context injection as a single installable unit rather than requiring `clade init` + `clade setup`.
 
 **Sources:**
 - [Create plugins - Claude Code Docs](https://code.claude.com/docs/en/plugins)
@@ -100,14 +100,14 @@ The model itself has evolved dramatically: **1M token context** (750K words), **
 
 ## 2. The Context Problem: Going Deeper
 
-### 2.1 What Pacer Does Today
+### 2.1 What Clade Does Today
 
-Pacer's `inject-context` (invoked via `SessionStart` hook) gathers:
-1. **Most recent DROPBAG** from `.pacer/dropbags/` with staleness warnings
+Clade's `inject-context` (invoked via `SessionStart` hook) gathers:
+1. **Most recent DROPBAG** from `.clade/dropbags/` with staleness warnings
 2. **Git status** (staged, modified, untracked files)
 3. **Recent commits** (last 5)
 4. **TODO/FIXME comments** (up to 10, scanned from source)
-5. **Ticket metadata** from `.pacer/metadata.json`
+5. **Ticket metadata** from `.clade/metadata.json`
 
 This is solid but shallow. The context is a snapshot of *right now* with one artifact from *last time*. There is no memory of what happened across sessions, no understanding of which files matter most, no awareness of what Claude actually did in previous sessions.
 
@@ -115,17 +115,17 @@ This is solid but shallow. The context is a snapshot of *right now* with one art
 
 **A. Session History as Structured Data**
 
-The DROPBAG system is human-written prose. This is good (the human decides what matters) but lossy (the human forgets things). Claude Code already maintains session logs in `~/.claude/projects/`. Pacer could parse these to build structured session summaries: which files were touched, what tools were used, what errors occurred, what decisions were made.
+The DROPBAG system is human-written prose. This is good (the human decides what matters) but lossy (the human forgets things). Claude Code already maintains session logs in `~/.claude/projects/`. Clade could parse these to build structured session summaries: which files were touched, what tools were used, what errors occurred, what decisions were made.
 
 **B. Cross-Worktree Context Sharing**
 
-Currently each worktree is an island. If you spike something in `try-redis` and then start `implement-caching`, the caching worktree knows nothing about the spike. Pacer's state tracks what worktrees exist per repo, but there is no mechanism to say "bring context from worktree X into worktree Y."
+Currently each worktree is an island. If you spike something in `try-redis` and then start `implement-caching`, the caching worktree knows nothing about the spike. Clade's state tracks what worktrees exist per repo, but there is no mechanism to say "bring context from worktree X into worktree Y."
 
-A `pacer context import try-redis` command could inject the spike's DROPBAG, its key commits, and its changed files as background context into the current session.
+A `clade context import try-redis` command could inject the spike's DROPBAG, its key commits, and its changed files as background context into the current session.
 
 **C. Relevance Scoring**
 
-Not all context is equally valuable. A DROPBAG from 2 hours ago about Redis caching is gold. A git status showing 3 untracked test files is noise. Pacer could score context sections by:
+Not all context is equally valuable. A DROPBAG from 2 hours ago about Redis caching is gold. A git status showing 3 untracked test files is noise. Clade could score context sections by:
 - Age (exponential decay)
 - Relevance to current branch name / ticket
 - Size of changes (bigger diffs = more important context)
@@ -133,11 +133,11 @@ Not all context is equally valuable. A DROPBAG from 2 hours ago about Redis cach
 
 **D. Project Memory**
 
-The real gap: there is no persistent memory across the entire lifecycle of a feature. You create a spike, learn something, clean it up, create a feature branch, work for 3 days, create a PR. The knowledge from the spike is gone by day 2 of the feature. Pacer could maintain a `~/pacer/repos/{repo}/memory.md` that accumulates key decisions and learnings across all worktrees for that repo.
+The real gap: there is no persistent memory across the entire lifecycle of a feature. You create a spike, learn something, clean it up, create a feature branch, work for 3 days, create a PR. The knowledge from the spike is gone by day 2 of the feature. Clade could maintain a `~/clade/repos/{repo}/memory.md` that accumulates key decisions and learnings across all worktrees for that repo.
 
 **E. Leveraging New Hooks**
 
-With 12 hooks available, Pacer could:
+With 12 hooks available, Clade could:
 - Use `Stop` to auto-generate a DROPBAG when Claude finishes (no more forgetting to `/drop`)
 - Use `PreCompact` to save the conversation state before compaction erases it
 - Use `SessionEnd` to update the project memory
@@ -150,18 +150,18 @@ With 12 hooks available, Pacer could:
 
 ### 3.1 The Natural Fit
 
-Pacer already manages isolated worktrees. Agent teams need isolated workspaces. This is the same problem from two directions. Pacer creates the physical isolation (git worktrees), agent teams create the logical coordination (task lists, messaging). Today these are disconnected. They should be unified.
+Clade already manages isolated worktrees. Agent teams need isolated workspaces. This is the same problem from two directions. Clade creates the physical isolation (git worktrees), agent teams create the logical coordination (task lists, messaging). Today these are disconnected. They should be unified.
 
 ### 3.2 Concrete Architecture: One Agent Per Worktree
 
 Imagine this workflow:
 
 ```
-$ pacer team api-migration --repos my-api,my-frontend,my-package
+$ clade team api-migration --repos my-api,my-frontend,my-package
   Creating worktrees:
-    ~/pacer/repos/my-api/api-migration/
-    ~/pacer/repos/my-frontend/api-migration/
-    ~/pacer/repos/my-package/api-migration/
+    ~/clade/repos/my-api/api-migration/
+    ~/clade/repos/my-frontend/api-migration/
+    ~/clade/repos/my-package/api-migration/
 
   Launching agent team...
     Lead: coordinating from my-api worktree
@@ -172,8 +172,8 @@ $ pacer team api-migration --repos my-api,my-frontend,my-package
   Shared task list created at ~/.claude/tasks/api-migration/
 ```
 
-Pacer would:
-1. Create matching worktrees across repos (it already does this in `pacer project`)
+Clade would:
+1. Create matching worktrees across repos (it already does this in `clade project`)
 2. Spawn an agent team with one teammate per worktree
 3. Inject per-worktree context into each teammate's session
 4. Provide the lead agent with a high-level project brief
@@ -181,15 +181,15 @@ Pacer would:
 
 ### 3.3 The Task List Bridge
 
-Agent teams use a shared task list at `~/.claude/tasks/{team-name}/`. Pacer's state system (`~/pacer/state.json`) already tracks worktrees. These should be bridged:
-- Pacer creates the team and initial task breakdown
+Agent teams use a shared task list at `~/.claude/tasks/{team-name}/`. Clade's state system (`~/clade/state.json`) already tracks worktrees. These should be bridged:
+- Clade creates the team and initial task breakdown
 - Teammates self-assign tasks and work in their designated worktrees
-- Pacer's `list` command shows both worktree status and task progress
-- When a teammate completes its work, Pacer's cleanup can handle the worktree lifecycle
+- Clade's `list` command shows both worktree status and task progress
+- When a teammate completes its work, Clade's cleanup can handle the worktree lifecycle
 
 ### 3.4 Context for Teams
 
-Each teammate agent has its own context window. Pacer could ensure each one gets:
+Each teammate agent has its own context window. Clade could ensure each one gets:
 - The shared project brief
 - Its specific worktree's DROPBAG and git state
 - A summary of what other teammates have completed (from the task list)
@@ -201,24 +201,24 @@ Each teammate agent has its own context window. Pacer could ensure each one gets
 
 ### 4.1 Session Manager
 
-Pacer is already halfway to being a session manager. It tracks creation time, last-used time, labels, tickets. The missing pieces:
+Clade is already halfway to being a session manager. It tracks creation time, last-used time, labels, tickets. The missing pieces:
 - **Session duration tracking**: how long was each Claude session?
 - **Session outcome tracking**: did the session end in a commit? A DROPBAG? An abandoned experiment?
 - **Session analytics**: "This week you spent 12 hours across 8 worktrees. 3 were spikes, 2 became features."
 
 ### 4.2 Context Orchestrator
 
-With the new hook system, Pacer could become the **context orchestrator** that sits between all external data sources and Claude:
-- JIRA tickets (via MCP) enriched with Pacer-tracked metadata
+With the new hook system, Clade could become the **context orchestrator** that sits between all external data sources and Claude:
+- JIRA tickets (via MCP) enriched with Clade-tracked metadata
 - Git history annotated with session context
 - DROPBAG chains that tell the story of a feature
 - Cross-repo awareness ("the API change you made in backend/ requires a frontend/ update")
 
-The `UserPromptSubmit` hook is particularly powerful here -- Pacer could analyze what the user is asking about and inject *relevant* context dynamically, rather than dumping everything at session start.
+The `UserPromptSubmit` hook is particularly powerful here -- Clade could analyze what the user is asking about and inject *relevant* context dynamically, rather than dumping everything at session start.
 
 ### 4.3 Workflow Engine
 
-Lifecycle hooks (`on_create`, `on_resume`, `on_remove`) are Pacer's existing workflow primitives. These could be extended to:
+Lifecycle hooks (`on_create`, `on_resume`, `on_remove`) are Clade's existing workflow primitives. These could be extended to:
 - **on_commit**: run after a commit in the worktree
 - **on_pr_created**: trigger actions when a PR is opened
 - **on_test_pass/fail**: respond to CI results
@@ -227,17 +227,17 @@ Lifecycle hooks (`on_create`, `on_resume`, `on_remove`) are Pacer's existing wor
 
 ### 4.4 Distribution as a Plugin
 
-The most immediate strategic move: package Pacer's hook integration as a **Claude Code plugin**. Instead of:
+The most immediate strategic move: package Clade's hook integration as a **Claude Code plugin**. Instead of:
 
 ```bash
-pacer init
-pacer setup
+clade init
+clade setup
 ```
 
 Users could do:
 
 ```
-/plugin install pacer
+/plugin install clade
 ```
 
 And get: the SessionStart hook, the `/drop` skill, context injection, and worktree-aware commands -- all in one installable unit that updates automatically.
@@ -248,15 +248,15 @@ And get: the SessionStart hook, the `/drop` skill, context injection, and worktr
 
 ### Bold Bet #1: Autonomous Worktree Swarms
 
-**What it is:** `pacer swarm PROJ-123 --plan` analyzes a JIRA ticket, decomposes it into subtasks, creates one worktree per subtask, launches an agent team, and monitors progress. The human reviews at the end, not the beginning.
+**What it is:** `clade swarm PROJ-123 --plan` analyzes a JIRA ticket, decomposes it into subtasks, creates one worktree per subtask, launches an agent team, and monitors progress. The human reviews at the end, not the beginning.
 
-**Why it matters:** Agent teams + worktrees + context injection is a unique combination that no other tool offers. Worktrunk manages worktrees. Claude manages agents. Only Pacer bridges both AND provides context. With Opus 4.6's 1M token context and sustained autonomous workflows, a swarm of agents each working in isolated worktrees with rich context could complete a full JIRA epic while you eat lunch.
+**Why it matters:** Agent teams + worktrees + context injection is a unique combination that no other tool offers. Worktrunk manages worktrees. Claude manages agents. Only Clade bridges both AND provides context. With Opus 4.6's 1M token context and sustained autonomous workflows, a swarm of agents each working in isolated worktrees with rich context could complete a full JIRA epic while you eat lunch.
 
-**Technical path:** Pacer already has `pacer project` for multi-repo worktrees, state tracking, and lifecycle hooks. The missing pieces are: task decomposition (let Claude do this), agent team spawning (use `TeammateTool`), and progress monitoring (read `~/.claude/tasks/`).
+**Technical path:** Clade already has `clade project` for multi-repo worktrees, state tracking, and lifecycle hooks. The missing pieces are: task decomposition (let Claude do this), agent team spawning (use `TeammateTool`), and progress monitoring (read `~/.claude/tasks/`).
 
 ### Bold Bet #2: Contextual Memory Graph
 
-**What it is:** Instead of flat DROPBAG files, Pacer maintains a structured knowledge graph per repo. Nodes are decisions, learnings, code patterns, and constraints. Edges are relationships ("this decision was made because of that constraint"). The graph is updated via the `SessionEnd` hook. Context injection queries the graph for nodes relevant to the current session.
+**What it is:** Instead of flat DROPBAG files, Clade maintains a structured knowledge graph per repo. Nodes are decisions, learnings, code patterns, and constraints. Edges are relationships ("this decision was made because of that constraint"). The graph is updated via the `SessionEnd` hook. Context injection queries the graph for nodes relevant to the current session.
 
 **Why it matters:** The #1 pain in AI coding is re-explaining context. Every session starts from zero. DROPBAGs help, but they are linear and manual. A knowledge graph persists *understanding*, not just notes. With 1M tokens available, you could inject far more relevant context without hitting limits.
 
@@ -266,9 +266,9 @@ And get: the SessionStart hook, the `/drop` skill, context injection, and worktr
 
 **What it is:** A Claude Code skill (not a CLI command) that auto-detects when you are returning to a worktree and reconstructs your full mental context. It reads DROPBAGs, session logs, git history, test results, CI status, PR comments, and teammate progress -- then synthesizes a 2-paragraph "here's where you left off" briefing that Claude presents proactively.
 
-**Why it matters:** This moves Pacer from a CLI tool you run to an **invisible intelligence layer**. The user never types `pacer resume`. They just open Claude Code in a worktree and Claude says: "Welcome back. Last session you were debugging the Redis connection pool. You identified the issue in `pool.go:142` but hadn't committed the fix yet. The PR for the related frontend change was merged 3 hours ago by your teammate. Here's what I suggest we do first..."
+**Why it matters:** This moves Clade from a CLI tool you run to an **invisible intelligence layer**. The user never types `clade resume`. They just open Claude Code in a worktree and Claude says: "Welcome back. Last session you were debugging the Redis connection pool. You identified the issue in `pool.go:142` but hadn't committed the fix yet. The PR for the related frontend change was merged 3 hours ago by your teammate. Here's what I suggest we do first..."
 
-**Technical path:** Create a Pacer skill at `.claude/skills/pacer-resume/SKILL.md` with `auto-invoke: true` and a description that triggers on session start. The skill calls `pacer inject-context` internally but adds synthesis via Claude's own reasoning. This leverages the skills auto-invoke system so the user never explicitly runs anything.
+**Technical path:** Create a Clade skill at `.claude/skills/pacer-resume/SKILL.md` with `auto-invoke: true` and a description that triggers on session start. The skill calls `clade inject-context` internally but adds synthesis via Claude's own reasoning. This leverages the skills auto-invoke system so the user never explicitly runs anything.
 
 ---
 
@@ -276,9 +276,9 @@ And get: the SessionStart hook, the `/drop` skill, context injection, and worktr
 
 ### 6.1 Direct Competitors
 
-| Tool | What It Does | Pacer's Advantage |
+| Tool | What It Does | Clade's Advantage |
 |---|---|---|
-| **[Worktrunk](https://worktrunk.dev/)** | Git worktree CLI for AI agent workflows. Three core commands. Rust. | Pacer has context injection, hook integration, DROPBAG system, ticket detection. Worktrunk is worktree-only. |
+| **[Worktrunk](https://worktrunk.dev/)** | Git worktree CLI for AI agent workflows. Three core commands. Rust. | Clade has context injection, hook integration, DROPBAG system, ticket detection. Worktrunk is worktree-only. |
 | **[git-worktree-runner](https://github.com/coderabbitai/git-worktree-runner)** (CodeRabbit) | Bash-based worktree manager with AI tool integration | Simpler/less opinionated. No context management, no session continuity. |
 | **[gwq](https://github.com/d-kuro/gwq)** | Go worktree manager with fuzzy finder | Navigation-focused. No AI integration, no context. |
 | **[worktree-cli](https://github.com/fnebenfuehr/worktree-cli)** | General-purpose worktree management | No AI awareness at all. |
@@ -290,14 +290,14 @@ And get: the SessionStart hook, the `/drop` skill, context injection, and worktr
 
 ### 6.2 Adjacent Competitors
 
-| Tool | What It Does | Relationship to Pacer |
+| Tool | What It Does | Relationship to Clade |
 |---|---|---|
 | **OpenAI Codex** | Cloud-based agent with [built-in worktree support](https://developers.openai.com/codex/app/worktrees/) | Platform-locked. No local-first, no multi-tool. |
-| **Cursor Rules/Hooks** | IDE-native hook system, `.cursor/rules/` | Pacer already integrates. Rules are complementary, not competitive. |
-| **Claude Code Plugins** | First-party extensibility | Distribution channel for Pacer, not competitor. |
+| **Cursor Rules/Hooks** | IDE-native hook system, `.cursor/rules/` | Clade already integrates. Rules are complementary, not competitive. |
+| **Claude Code Plugins** | First-party extensibility | Distribution channel for Clade, not competitor. |
 | **[Kilo Code](https://www.faros.ai/blog/best-ai-coding-agents-2026)** | Open-source agent with structured modes | Different niche (modes vs worktrees). |
 
-### 6.3 Pacer's Unique Position
+### 6.3 Clade's Unique Position
 
 No other tool occupies the intersection of:
 1. **Git worktree lifecycle management** (create, resume, cleanup)
@@ -305,7 +305,7 @@ No other tool occupies the intersection of:
 3. **Multi-tool support** (Claude Code + Cursor)
 4. **Session continuity** (the `/drop` -> DROPBAG -> `inject-context` loop)
 
-The worktree-only tools (Worktrunk, gwq) lack context. The AI platforms (Codex, Cursor) lack worktree management. Pacer is the bridge. The strategic question is whether to deepen the bridge (more context, more hooks, more intelligence) or widen it (more agents, more platforms, more workflows).
+The worktree-only tools (Worktrunk, gwq) lack context. The AI platforms (Codex, Cursor) lack worktree management. Clade is the bridge. The strategic question is whether to deepen the bridge (more context, more hooks, more intelligence) or widen it (more agents, more platforms, more workflows).
 
 My recommendation: **deepen first, then widen**. The context layer is where the moat is. Anyone can wrap `git worktree add`. Nobody else is building session-aware, cross-worktree, multi-agent context orchestration.
 
@@ -319,12 +319,12 @@ My recommendation: **deepen first, then widen**. The context layer is where the 
 | **Immediate** | Package as Claude Code plugin | Medium | High -- 10x distribution |
 | **Short-term** | Convert `/drop` to a proper skill with `SKILL.md` | Low | Medium -- auto-invoke, better UX |
 | **Short-term** | Add `SessionEnd` hook for project memory | Low | High -- persistent learning |
-| **Medium-term** | `pacer team` command bridging worktrees + agent teams | High | Transformative -- unique in market |
+| **Medium-term** | `clade team` command bridging worktrees + agent teams | High | Transformative -- unique in market |
 | **Medium-term** | Cross-worktree context sharing | Medium | High -- solves the spike-to-feature gap |
 | **Long-term** | Contextual memory graph | High | Transformative -- the ultimate context moat |
 | **Long-term** | Autonomous worktree swarms | High | Transformative -- but depends on agent team maturity |
 
-The window is open. Agent teams shipped *today*. The worktree management space is fragmented and immature. Nobody has combined worktree isolation with AI context orchestration at the depth Pacer is positioned to achieve. The next 90 days will determine whether Pacer becomes the standard infrastructure layer for AI-assisted multi-branch development, or gets outpaced by a competitor who moves faster on the agent teams integration.
+The window is open. Agent teams shipped *today*. The worktree management space is fragmented and immature. Nobody has combined worktree isolation with AI context orchestration at the depth Clade is positioned to achieve. The next 90 days will determine whether Clade becomes the standard infrastructure layer for AI-assisted multi-branch development, or gets outpaced by a competitor who moves faster on the agent teams integration.
 
 ---
 

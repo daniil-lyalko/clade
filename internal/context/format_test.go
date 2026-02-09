@@ -17,8 +17,8 @@ func TestFormatContext_TicketMdPathResolution(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	// Create .pacer/metadata.json with ticket (new path)
-	pacerJSON := fmt.Sprintf(`{
+	// Create .clade/metadata.json with ticket (new path)
+	cladeJSON := fmt.Sprintf(`{
 		"type": "worktree",
 		"name": "test-bug",
 		"ticket": "PROJ-1234",
@@ -26,9 +26,9 @@ func TestFormatContext_TicketMdPathResolution(t *testing.T) {
 		"created": "%s"
 	}`, time.Now().Format(time.RFC3339))
 
-	pacerDir := filepath.Join(tmpDir, ".pacer")
-	require.NoError(t, os.MkdirAll(pacerDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(pacerDir, "metadata.json"), []byte(pacerJSON), 0644))
+	cladeDir := filepath.Join(tmpDir, ".clade")
+	require.NoError(t, os.MkdirAll(cladeDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(cladeDir, "metadata.json"), []byte(cladeJSON), 0644))
 
 	// Test case 1: TICKET.md exists in worktree
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "TICKET.md"), []byte("Ticket details"), 0644))
@@ -57,22 +57,22 @@ func TestFormatContext_TicketMdPathResolution(t *testing.T) {
 }
 
 func TestFormatContext_TicketMdFromSubdirectory(t *testing.T) {
-	// Critical test: Verify TICKET.md is found even when pacer inject-context
+	// Critical test: Verify TICKET.md is found even when clade inject-context
 	// is called from a subdirectory (not repo root)
 
 	tmpDir := t.TempDir()
 	subDir := filepath.Join(tmpDir, "src", "components")
 	require.NoError(t, os.MkdirAll(subDir, 0755))
 
-	// Create .pacer.json at repo root
-	pacerJSON := fmt.Sprintf(`{
+	// Create .clade.json at repo root
+	cladeJSON := fmt.Sprintf(`{
 		"type": "worktree",
 		"name": "test",
 		"ticket": "PROJ-5678",
 		"repo": "test-repo",
 		"created": "%s"
 	}`, time.Now().Format(time.RFC3339))
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".pacer.json"), []byte(pacerJSON), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".clade.json"), []byte(cladeJSON), 0644))
 
 	// Create TICKET.md at repo root
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "TICKET.md"), []byte("Details"), 0644))
@@ -89,14 +89,14 @@ func TestFormatContext_TicketMdFromSubdirectory(t *testing.T) {
 func TestFormatContext_NoTicket(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create .pacer.json without ticket
-	pacerJSON := fmt.Sprintf(`{
+	// Create .clade.json without ticket
+	cladeJSON := fmt.Sprintf(`{
 		"type": "worktree",
 		"name": "test",
 		"repo": "test-repo",
 		"created": "%s"
 	}`, time.Now().Format(time.RFC3339))
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".pacer.json"), []byte(pacerJSON), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".clade.json"), []byte(cladeJSON), 0644))
 
 	ctx, err := GatherContext(tmpDir)
 	require.NoError(t, err)
@@ -109,7 +109,7 @@ func TestFormatContext_NoTicket(t *testing.T) {
 
 func TestFormatContext_StaleDropbag(t *testing.T) {
 	tmpDir := t.TempDir()
-	dropbagsDir := filepath.Join(tmpDir, ".pacer", "dropbags")
+	dropbagsDir := filepath.Join(tmpDir, ".clade", "dropbags")
 	require.NoError(t, os.MkdirAll(dropbagsDir, 0755))
 
 	// Create old DROPBAG (3 days old = stale)
@@ -132,7 +132,7 @@ func TestFormatContext_StaleDropbag(t *testing.T) {
 
 func TestFormatContext_FreshDropbag(t *testing.T) {
 	tmpDir := t.TempDir()
-	dropbagsDir := filepath.Join(tmpDir, ".pacer", "dropbags")
+	dropbagsDir := filepath.Join(tmpDir, ".clade", "dropbags")
 	require.NoError(t, os.MkdirAll(dropbagsDir, 0755))
 
 	// Create recent DROPBAG (1 hour ago = fresh)
@@ -150,7 +150,7 @@ func TestFormatContext_FreshDropbag(t *testing.T) {
 	assert.Contains(t, output, "Fresh session notes")
 }
 
-func TestReadPacerMetadata_Valid(t *testing.T) {
+func TestReadCladeMetadata_Valid(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	metadataJSON := `{
@@ -161,12 +161,12 @@ func TestReadPacerMetadata_Valid(t *testing.T) {
 		"created": "2026-01-26T10:00:00Z"
 	}`
 
-	// Use new path: .pacer/metadata.json
-	pacerDir := filepath.Join(tmpDir, ".pacer")
-	require.NoError(t, os.MkdirAll(pacerDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(pacerDir, "metadata.json"), []byte(metadataJSON), 0644))
+	// Use new path: .clade/metadata.json
+	cladeDir := filepath.Join(tmpDir, ".clade")
+	require.NoError(t, os.MkdirAll(cladeDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(cladeDir, "metadata.json"), []byte(metadataJSON), 0644))
 
-	metadata, err := ReadPacerMetadata(tmpDir)
+	metadata, err := ReadCladeMetadata(tmpDir)
 
 	require.NoError(t, err)
 	assert.Equal(t, "worktree", metadata.Type)
@@ -175,8 +175,8 @@ func TestReadPacerMetadata_Valid(t *testing.T) {
 	assert.Equal(t, "my-repo", metadata.Repo)
 }
 
-func TestReadPacerMetadata_LegacyMigration(t *testing.T) {
-	// Test auto-migration from legacy .pacer.json to .pacer/metadata.json
+func TestReadCladeMetadata_LegacyMigration(t *testing.T) {
+	// Test auto-migration from legacy .clade.json to .clade/metadata.json
 	tmpDir := t.TempDir()
 
 	metadataJSON := `{
@@ -188,35 +188,35 @@ func TestReadPacerMetadata_LegacyMigration(t *testing.T) {
 	}`
 
 	// Write to legacy path
-	legacyPath := filepath.Join(tmpDir, ".pacer.json")
+	legacyPath := filepath.Join(tmpDir, ".clade.json")
 	require.NoError(t, os.WriteFile(legacyPath, []byte(metadataJSON), 0644))
 
 	// Read should work and auto-migrate
-	metadata, err := ReadPacerMetadata(tmpDir)
+	metadata, err := ReadCladeMetadata(tmpDir)
 	require.NoError(t, err)
 	assert.Equal(t, "legacy-test", metadata.Name)
 
 	// Verify migration happened
-	newPath := filepath.Join(tmpDir, ".pacer", "metadata.json")
+	newPath := filepath.Join(tmpDir, ".clade", "metadata.json")
 	assert.FileExists(t, newPath, "metadata.json should exist after migration")
-	assert.NoFileExists(t, legacyPath, ".pacer.json should be removed after migration")
+	assert.NoFileExists(t, legacyPath, ".clade.json should be removed after migration")
 }
 
-func TestReadPacerMetadata_NotFound(t *testing.T) {
+func TestReadCladeMetadata_NotFound(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	metadata, err := ReadPacerMetadata(tmpDir)
+	metadata, err := ReadCladeMetadata(tmpDir)
 
 	assert.Error(t, err)
 	assert.Nil(t, metadata)
 }
 
-func TestReadPacerMetadata_InvalidJSON(t *testing.T) {
+func TestReadCladeMetadata_InvalidJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".pacer.json"), []byte("invalid json{"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".clade.json"), []byte("invalid json{"), 0644))
 
-	metadata, err := ReadPacerMetadata(tmpDir)
+	metadata, err := ReadCladeMetadata(tmpDir)
 
 	assert.Error(t, err)
 	assert.Nil(t, metadata)

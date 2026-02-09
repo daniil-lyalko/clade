@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/daniil-lyalko/pacer/internal/config"
-	"github.com/daniil-lyalko/pacer/internal/ui"
+	"github.com/daniil-lyalko/clade/internal/config"
+	"github.com/daniil-lyalko/clade/internal/ui"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
@@ -17,8 +17,8 @@ var configJSONFlag bool
 
 var configCmd = &cobra.Command{
 	Use:   "config",
-	Short: "View or modify pacer configuration",
-	Long: `Manage pacer configuration settings.
+	Short: "View or modify clade configuration",
+	Long: `Manage clade configuration settings.
 
 Without arguments, re-runs the setup wizard.
 
@@ -30,17 +30,17 @@ Subcommands:
 Settable keys:
   agent        AI agent to launch (claude, cursor, or empty)
   editor       Editor to open (cursor, code, nvim, or empty)
-  base_dir     Directory for worktrees (default: ~/pacer)
-  auto_init    Auto-run 'pacer init' on worktree creation (true/false)
+  base_dir     Directory for worktrees (default: ~/clade)
+  auto_init    Auto-run 'clade init' on worktree creation (true/false)
   tmux_split   TMUX pane direction (horizontal/vertical)
 
 Examples:
-  pacer config                     # Re-run setup wizard
-  pacer config show                # Display config
-  pacer config show --json         # JSON output for scripting
-  pacer config set agent cursor    # Change agent
-  pacer config set auto_init false # Disable auto-init
-  pacer config reset               # Reset to defaults`,
+  clade config                     # Re-run setup wizard
+  clade config show                # Display config
+  clade config show --json         # JSON output for scripting
+  clade config set agent cursor    # Change agent
+  clade config set auto_init false # Disable auto-init
+  clade config reset               # Reset to defaults`,
 	RunE: runConfigWizard,
 }
 
@@ -58,15 +58,15 @@ var configSetCmd = &cobra.Command{
 Settable keys:
   agent        AI agent to launch (claude, cursor, or empty string "")
   editor       Editor to open (cursor, code, nvim, or empty string "")
-  base_dir     Directory for worktrees (default: ~/pacer)
-  auto_init    Auto-run 'pacer init' (true/false)
+  base_dir     Directory for worktrees (default: ~/clade)
+  auto_init    Auto-run 'clade init' (true/false)
   tmux_split   TMUX pane direction (horizontal/vertical)
 
 Examples:
-  pacer config set agent claude
-  pacer config set editor cursor
-  pacer config set auto_init false
-  pacer config set agent ""         # Clear agent setting`,
+  clade config set agent claude
+  clade config set editor cursor
+  clade config set auto_init false
+  clade config set agent ""         # Clear agent setting`,
 	Args: cobra.ExactArgs(2),
 	RunE: runConfigSet,
 }
@@ -78,7 +78,7 @@ var configResetCmd = &cobra.Command{
 
 This will:
   - Clear agent and editor settings
-  - Reset base_dir to ~/pacer
+  - Reset base_dir to ~/clade
   - Reset auto_init to true
   - Reset tmux_split to horizontal
   - Preserve registered repos
@@ -104,7 +104,7 @@ func runConfigWizard(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println()
-	fmt.Println("  Pacer configuration wizard")
+	fmt.Println("  Clade configuration wizard")
 	fmt.Println()
 
 	// Ask about AI coding tool
@@ -200,8 +200,8 @@ func runConfigWizard(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println()
-	ui.Info("Run 'pacer config show' to see all settings")
-	ui.Info("Run 'pacer config set <key> <value>' to change individual settings")
+	ui.Info("Run 'clade config show' to see all settings")
+	ui.Info("Run 'clade config set <key> <value>' to change individual settings")
 
 	return nil
 }
@@ -250,7 +250,7 @@ func runConfigShow(cmd *cobra.Command, args []string) error {
 	printConfigKV("agent", cfg.Agent, "(AI agent to launch)")
 	printConfigKV("editor", cfg.Editor, "(editor/IDE to open)")
 	printConfigKV("base_dir", cfg.BaseDir, "(worktree directory)")
-	printConfigKV("auto_init", strconv.FormatBool(cfg.AutoInit), "(auto-run pacer init)")
+	printConfigKV("auto_init", strconv.FormatBool(cfg.AutoInit), "(auto-run clade init)")
 	printConfigKV("tmux_split", cfg.TmuxSplitDirection, "(pane direction)")
 
 	// Repos
@@ -274,8 +274,8 @@ func runConfigShow(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println()
-	fmt.Printf("Run '%s' to change settings.\n", ui.Cyan("pacer config set <key> <value>"))
-	fmt.Printf("Run '%s' to re-run setup wizard.\n", ui.Cyan("pacer config"))
+	fmt.Printf("Run '%s' to change settings.\n", ui.Cyan("clade config set <key> <value>"))
+	fmt.Printf("Run '%s' to re-run setup wizard.\n", ui.Cyan("clade config"))
 
 	return nil
 }
@@ -347,7 +347,7 @@ func runConfigReset(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	ui.Detail("agent: %s -> \"\"", cfg.Agent)
 	ui.Detail("editor: %s -> \"\"", cfg.Editor)
-	ui.Detail("base_dir: %s -> ~/pacer", cfg.BaseDir)
+	ui.Detail("base_dir: %s -> ~/clade", cfg.BaseDir)
 	ui.Detail("auto_init: %v -> true", cfg.AutoInit)
 	ui.Detail("tmux_split: %s -> horizontal", cfg.TmuxSplitDirection)
 	fmt.Println()
@@ -372,7 +372,7 @@ func runConfigReset(cmd *cobra.Command, args []string) error {
 	customLabels := cfg.CustomLabels
 
 	homeDir, _ := os.UserHomeDir()
-	cfg.BaseDir = "~/pacer"
+	cfg.BaseDir = "~/clade"
 	cfg.Agent = ""
 	cfg.AgentFlags = []string{}
 	cfg.Editor = ""
@@ -394,7 +394,7 @@ func runConfigReset(cmd *cobra.Command, args []string) error {
 
 	fmt.Println()
 	ui.Success("Configuration reset to defaults")
-	ui.Info("Run 'pacer config' to set up your preferences")
+	ui.Info("Run 'clade config' to set up your preferences")
 
 	return nil
 }

@@ -6,19 +6,19 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/daniil-lyalko/pacer/internal/config"
+	"github.com/daniil-lyalko/clade/internal/config"
 )
 
 func TestArchiveDropbags(t *testing.T) {
 	// Create a temporary worktree directory with dropbags
-	tmpDir, err := os.MkdirTemp("", "pacer-test-wt")
+	tmpDir, err := os.MkdirTemp("", "clade-test-wt")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(tmpDir)
 
 	// Create dropbags directory structure
-	dropbagsDir := filepath.Join(tmpDir, ".pacer", "dropbags")
+	dropbagsDir := filepath.Join(tmpDir, ".clade", "dropbags")
 	if err := os.MkdirAll(dropbagsDir, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -33,8 +33,8 @@ func TestArchiveDropbags(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create .pacer/metadata.json (new path)
-	metadataPath := filepath.Join(tmpDir, ".pacer", "metadata.json")
+	// Create .clade/metadata.json (new path)
+	metadataPath := filepath.Join(tmpDir, ".clade", "metadata.json")
 	if err := os.WriteFile(metadataPath, []byte(`{"name":"test-wt","label":"spike"}`), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestArchiveDropbags(t *testing.T) {
 
 func TestArchiveDropbags_NoDropbags(t *testing.T) {
 	// Create a temporary worktree directory WITHOUT dropbags
-	tmpDir, err := os.MkdirTemp("", "pacer-test-wt-empty")
+	tmpDir, err := os.MkdirTemp("", "clade-test-wt-empty")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,14 +124,14 @@ func TestArchiveDropbags_NoDropbags(t *testing.T) {
 
 func TestArchiveDropbags_EmptyDropbagsDir(t *testing.T) {
 	// Create a temporary worktree with empty dropbags directory
-	tmpDir, err := os.MkdirTemp("", "pacer-test-wt-empty-dir")
+	tmpDir, err := os.MkdirTemp("", "clade-test-wt-empty-dir")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(tmpDir)
 
 	// Create empty dropbags directory
-	dropbagsDir := filepath.Join(tmpDir, ".pacer", "dropbags")
+	dropbagsDir := filepath.Join(tmpDir, ".clade", "dropbags")
 	if err := os.MkdirAll(dropbagsDir, 0755); err != nil {
 		t.Fatal(err)
 	}

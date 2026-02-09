@@ -16,9 +16,9 @@ type DropbagInfo struct {
 	RelativeAge string
 }
 
-// ReadDropbag reads the most recent DROPBAG-*.md file from .pacer/dropbags/
+// ReadDropbag reads the most recent DROPBAG-*.md file from .clade/dropbags/
 func ReadDropbag(dir string) (*DropbagInfo, error) {
-	archiveDir := filepath.Join(dir, ".pacer", "dropbags")
+	archiveDir := filepath.Join(dir, ".clade", "dropbags")
 
 	info := &DropbagInfo{
 		Exists: false,

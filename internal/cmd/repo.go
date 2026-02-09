@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/daniil-lyalko/pacer/internal/config"
-	"github.com/daniil-lyalko/pacer/internal/git"
-	"github.com/daniil-lyalko/pacer/internal/ui"
+	"github.com/daniil-lyalko/clade/internal/config"
+	"github.com/daniil-lyalko/clade/internal/git"
+	"github.com/daniil-lyalko/clade/internal/ui"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
@@ -31,10 +31,10 @@ If the path is a directory containing git repositories, all repos
 in that directory will be registered.
 
 Examples:
-  pacer repo add ~/repos/my-project
-  pacer repo add . --name backend
-  pacer repo add ~/repos/api --name api
-  pacer repo add ~/repos              # Scans and adds all repos in folder`,
+  clade repo add ~/repos/my-project
+  clade repo add . --name backend
+  clade repo add ~/repos/api --name api
+  clade repo add ~/repos              # Scans and adds all repos in folder`,
 	Args: cobra.ExactArgs(1),
 	RunE: runRepoAdd,
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -207,7 +207,7 @@ func runRepoList(cmd *cobra.Command, args []string) error {
 
 	if len(cfg.Repos) == 0 {
 		ui.Info("No repositories registered")
-		ui.Detail("Use: pacer repo add <path>")
+		ui.Detail("Use: clade repo add <path>")
 		return nil
 	}
 

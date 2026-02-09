@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/daniil-lyalko/pacer/internal/context"
-	"github.com/daniil-lyalko/pacer/internal/git"
+	"github.com/daniil-lyalko/clade/internal/context"
+	"github.com/daniil-lyalko/clade/internal/git"
 	"github.com/spf13/cobra"
 )
 
@@ -22,7 +22,7 @@ var injectCmd = &cobra.Command{
 	Hidden: true, // Not meant to be called directly by users
 	Long: `Outputs session context to stdout for the AI agent to consume.
 
-This command is called automatically by hooks configured by 'pacer init':
+This command is called automatically by hooks configured by 'clade init':
   - Claude Code: SessionStart hook (plain text output)
   - Cursor: sessionStart hook (JSON output, auto-detected)
 
@@ -35,8 +35,8 @@ When Cursor loads both .cursor/hooks.json and .claude/settings.json (via
 "Third-party hooks"), deduplication prevents double injection: the second
 call within 3 seconds outputs nothing.
 
-Use 'pacer inject-context' from a terminal to test plain text output.
-Use 'echo {} | pacer inject-context --json' to test JSON output.`,
+Use 'clade inject-context' from a terminal to test plain text output.
+Use 'echo {} | clade inject-context --json' to test JSON output.`,
 	RunE: runInjectContext,
 }
 
@@ -135,7 +135,7 @@ func needsJSONOutput() bool {
 func dedupPath(dir string) string {
 	h := fnv.New32a()
 	h.Write([]byte(dir))
-	return filepath.Join(os.TempDir(), fmt.Sprintf("pacer-inject-%x", h.Sum32()))
+	return filepath.Join(os.TempDir(), fmt.Sprintf("clade-inject-%x", h.Sum32()))
 }
 
 // wasRecentlyInjected checks if inject-context was called for this
@@ -154,9 +154,9 @@ func markInjected(dir string) {
 	os.WriteFile(dedupPath(dir), []byte("1"), 0600)
 }
 
-// checkHookFailures reads .pacer/last-hook-results.json and returns warnings for failed hooks.
+// checkHookFailures reads .clade/last-hook-results.json and returns warnings for failed hooks.
 func checkHookFailures(dir string) string {
-	resultsPath := filepath.Join(dir, ".pacer", "last-hook-results.json")
+	resultsPath := filepath.Join(dir, ".clade", "last-hook-results.json")
 
 	data, err := os.ReadFile(resultsPath)
 	if err != nil {

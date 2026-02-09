@@ -29,7 +29,7 @@ func TrustRegistryPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(homeDir, ".config", "pacer", "trusted-repos.json"), nil
+	return filepath.Join(homeDir, ".config", "clade", "trusted-repos.json"), nil
 }
 
 // LoadTrustRegistry loads the trust registry from disk
@@ -138,17 +138,17 @@ func (t *TrustRegistry) Revoke(repoPath string) error {
 // EnsureRepoHooksTrusted checks if repo hooks are trusted, prompting if not
 // Returns error if user declines or an error occurs
 //
-// Set PACER_TRUST_REPO_HOOKS=1 to auto-trust all repo hooks (for testing/CI).
+// Set CLADE_TRUST_REPO_HOOKS=1 (or legacy PACER_TRUST_REPO_HOOKS=1) to auto-trust all repo hooks (for testing/CI).
 func EnsureRepoHooksTrusted(repoPath string) error {
-	hooksPath := filepath.Join(repoPath, ".pacer", "hooks.yaml")
+	hooksPath := filepath.Join(repoPath, ".clade", "hooks.yaml")
 
 	// Check if hooks file exists
 	if _, err := os.Stat(hooksPath); os.IsNotExist(err) {
 		return nil // No hooks = nothing to trust
 	}
 
-	// Allow bypassing trust for testing/CI environments
-	if os.Getenv("PACER_TRUST_REPO_HOOKS") == "1" {
+	// Allow bypassing trust for testing/CI environments (accept both new and legacy env var)
+	if os.Getenv("CLADE_TRUST_REPO_HOOKS") == "1" || os.Getenv("PACER_TRUST_REPO_HOOKS") == "1" {
 		return nil
 	}
 

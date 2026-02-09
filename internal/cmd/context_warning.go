@@ -31,7 +31,7 @@ func runContextWarning(cmd *cobra.Command, args []string) error {
 	fmt.Fprintln(os.Stderr, "  You can:")
 	fmt.Fprintln(os.Stderr, "    - Keep going (older context will be compressed)")
 	fmt.Fprintln(os.Stderr, "    - Run /drop to add your notes before continuing")
-	fmt.Fprintln(os.Stderr, "    - Start fresh: pacer resume (full context restored)")
+	fmt.Fprintln(os.Stderr, "    - Start fresh: clade resume (full context restored)")
 	fmt.Fprintln(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Fprintln(os.Stderr)
 

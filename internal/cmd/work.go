@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/daniil-lyalko/pacer/internal/config"
+	"github.com/daniil-lyalko/clade/internal/config"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
@@ -43,17 +43,17 @@ Custom labels defined in config are also available.
 By default, new branches are created from origin's default branch (main/master).
 Use -f/--from to specify a different base branch:
 
-  pacer work foo --from develop   # branch from develop instead of main
+  clade work foo --from develop   # branch from develop instead of main
 
 Examples:
-  pacer work new-api              # branch: new-api (from main)
-  pacer work try-redis -t spike   # branch: spike/try-redis (from main)
-  pacer work PROJ-123 -t bug      # branch: fix/PROJ-123 (from main)
-  pacer work foo -f develop       # branch: foo (from develop)
-  pacer work foo -t perf          # custom label from config
+  clade work new-api              # branch: new-api (from main)
+  clade work try-redis -t spike   # branch: spike/try-redis (from main)
+  clade work PROJ-123 -t bug      # branch: fix/PROJ-123 (from main)
+  clade work foo -f develop       # branch: foo (from develop)
+  clade work foo -t perf          # custom label from config
 
 Creates:
-  - A new worktree at ~/pacer/repos/{repo}/{name}/
+  - A new worktree at ~/clade/repos/{repo}/{name}/
   - A branch (with optional type prefix, from specified base)
   - Copies .claude/ config from the source repo`,
 	Args: cobra.MaximumNArgs(1),
@@ -62,7 +62,7 @@ Creates:
 
 func init() {
 	rootCmd.AddCommand(workCmd)
-	// Hide work command - users should use `pacer <name>` shorthand instead
+	// Hide work command - users should use `clade <name>` shorthand instead
 	workCmd.Hidden = true
 	// Command-specific flags (editor/agent flags inherited from root's persistent flags)
 	workCmd.Flags().StringVarP(&workTypeFlag, "type", "t", "", "Type of worktree (spike, feature, bug, chore, hotfix, docs, or custom)")

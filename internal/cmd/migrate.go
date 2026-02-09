@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/daniil-lyalko/pacer/internal/config"
-	"github.com/daniil-lyalko/pacer/internal/ui"
+	"github.com/daniil-lyalko/clade/internal/config"
+	"github.com/daniil-lyalko/clade/internal/ui"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
@@ -23,8 +23,8 @@ var migrateCmd = &cobra.Command{
 	Short: "Migrate experiments from v1 to v2 repo-centric structure",
 	Long: `Migrate existing experiments from v1 format to v2 repo-centric structure.
 
-v1 structure: ~/pacer/experiments/{repo}-{name}/
-v2 structure: ~/pacer/repos/{repo}/{name}/
+v1 structure: ~/clade/experiments/{repo}-{name}/
+v2 structure: ~/clade/repos/{repo}/{name}/
 
 This command will:
   1. Backup state.json to state.json.v1.backup
@@ -33,9 +33,9 @@ This command will:
   4. Update state version to 2
 
 Examples:
-  pacer migrate              # Show what would be migrated (dry-run)
-  pacer migrate --dry-run    # Explicit dry-run
-  pacer migrate --force      # Actually perform the migration`,
+  clade migrate              # Show what would be migrated (dry-run)
+  clade migrate --dry-run    # Explicit dry-run
+  clade migrate --force      # Actually perform the migration`,
 	RunE: runMigrate,
 }
 
@@ -153,7 +153,7 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 	if isDryRun {
 		fmt.Println()
 		ui.Info("To perform this migration, run:")
-		ui.Detail("  pacer migrate --force")
+		ui.Detail("  clade migrate --force")
 		return nil
 	}
 
@@ -232,15 +232,15 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 		state.RemoveExperiment(key)
 
 		// Update metadata file in the moved folder (check both new and legacy paths)
-		newMetadataPath := filepath.Join(p.newPath, ".pacer", "metadata.json")
-		oldMetadataPath := filepath.Join(p.newPath, ".pacer.json")
+		newMetadataPath := filepath.Join(p.newPath, ".clade", "metadata.json")
+		oldMetadataPath := filepath.Join(p.newPath, ".clade.json")
 		if _, err := os.Stat(oldMetadataPath); err == nil {
-			// Migrate legacy .pacer.json to new location
+			// Migrate legacy .clade.json to new location
 			if err := os.MkdirAll(filepath.Dir(newMetadataPath), 0755); err == nil {
 				os.Rename(oldMetadataPath, newMetadataPath)
 			}
 		}
-		updatePacerJSON(newMetadataPath, p.label)
+		updateCladeJSON(newMetadataPath, p.label)
 
 		ui.Success("Migrated %s → %s", p.exp.Name, p.newPath)
 		successCount++
@@ -297,8 +297,8 @@ func inferLabelFromBranch(branch string) string {
 	return "spike"
 }
 
-// updatePacerJSON updates the metadata file with label information
-func updatePacerJSON(path string, label string) {
+// updateCladeJSON updates the metadata file with label information
+func updateCladeJSON(path string, label string) {
 	// Read existing file
 	data, err := os.ReadFile(path)
 	if err != nil {

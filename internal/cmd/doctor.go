@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/daniil-lyalko/pacer/internal/config"
-	"github.com/daniil-lyalko/pacer/internal/git"
-	"github.com/daniil-lyalko/pacer/internal/ui"
+	"github.com/daniil-lyalko/clade/internal/config"
+	"github.com/daniil-lyalko/clade/internal/git"
+	"github.com/daniil-lyalko/clade/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -155,7 +155,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 
 	// Human-readable output
 	fmt.Println()
-	fmt.Println(ui.Bold("Pacer Doctor"))
+	fmt.Println(ui.Bold("Clade Doctor"))
 	fmt.Println()
 
 	// Print results
@@ -213,7 +213,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	if failures > 0 {
 		ui.Error("%d check(s) failed", failures)
 		if !doctorFixFlag {
-			ui.Info("Run 'pacer doctor --fix' to attempt automatic fixes")
+			ui.Info("Run 'clade doctor --fix' to attempt automatic fixes")
 		}
 		return fmt.Errorf("doctor found issues")
 	} else if warnings > 0 {
@@ -372,7 +372,7 @@ func checkBaseDir() checkResult {
 	}
 
 	// Check writable by creating a temp file
-	testFile := filepath.Join(baseDir, ".pacer-doctor-test")
+	testFile := filepath.Join(baseDir, ".clade-doctor-test")
 	if err := os.WriteFile(testFile, []byte("test"), 0600); err != nil {
 		return checkResult{
 			name:    "Base directory",
@@ -458,7 +458,7 @@ func checkRepos() []checkResult {
 			name:    "Registered repos",
 			ok:      true,
 			warning: false,
-			message: "none registered (use 'pacer repo add' to register)",
+			message: "none registered (use 'clade repo add' to register)",
 		}}
 	}
 
@@ -651,7 +651,7 @@ func checkOrphanedWorktrees() []checkResult {
 	return results
 }
 
-// checkUntrackedWorktrees finds git worktrees that aren't tracked in pacer state
+// checkUntrackedWorktrees finds git worktrees that aren't tracked in clade state
 func checkUntrackedWorktrees() []checkResult {
 	cfg, err := config.Load()
 	if err != nil {
@@ -680,7 +680,7 @@ func checkUntrackedWorktrees() []checkResult {
 				continue // Skip main repo
 			}
 
-			// Check if this git worktree is tracked in pacer state
+			// Check if this git worktree is tracked in clade state
 			found := false
 			for _, stateWt := range stateWorktrees {
 				stateWtPath := config.GetWorktreePath(cfg, repoName, stateWt)
@@ -691,21 +691,21 @@ func checkUntrackedWorktrees() []checkResult {
 			}
 
 			if !found {
-				// Check if this worktree is under pacer's repos directory
+				// Check if this worktree is under clade's repos directory
 				reposDir := cfg.ReposDir()
 				// Use strings.HasPrefix on cleaned paths to check containment
 				cleanedWtPath := filepath.Clean(gitWt.Path)
 				cleanedReposDir := filepath.Clean(reposDir) + string(filepath.Separator)
 				if !strings.HasPrefix(cleanedWtPath, cleanedReposDir) {
-					continue // Skip worktrees outside pacer's management
+					continue // Skip worktrees outside clade's management
 				}
 
 				results = append(results, checkResult{
 					name:    fmt.Sprintf("Untracked: %s", filepath.Base(gitWt.Path)),
 					ok:      false,
 					warning: true,
-					message: fmt.Sprintf("git worktree not tracked by pacer (branch: %s)", gitWt.Branch),
-					// No auto-fix - user should decide to adopt or remove via 'pacer resume' or 'pacer cleanup'
+					message: fmt.Sprintf("git worktree not tracked by clade (branch: %s)", gitWt.Branch),
+					// No auto-fix - user should decide to adopt or remove via 'clade resume' or 'clade cleanup'
 				})
 			}
 		}
@@ -768,11 +768,11 @@ func checkGlobalHooks() []checkResult {
 
 	// Check Claude global hook
 	claudeSettingsPath := filepath.Join(homeDir, ".claude", "settings.json")
-	if hasPacerHook(claudeSettingsPath, "claude") {
+	if hasCladeHook(claudeSettingsPath, "claude") {
 		results = append(results, checkResult{
 			name:    "Global Claude hook",
 			ok:      true,
-			message: "pacer inject-context in ~/.claude/settings.json",
+			message: "clade inject-context in ~/.claude/settings.json",
 		})
 	} else {
 		cp := claudeSettingsPath // capture for closure
@@ -780,7 +780,7 @@ func checkGlobalHooks() []checkResult {
 			name:    "Global Claude hook",
 			ok:      false,
 			warning: true,
-			message: "not found — run 'pacer setup'",
+			message: "not found — run 'clade setup'",
 			fixFunc: func() error {
 				_, err := mergeClaudeSettingsHooks(cp, false)
 				return err
@@ -790,11 +790,11 @@ func checkGlobalHooks() []checkResult {
 
 	// Check Cursor global hook
 	cursorHooksPath := filepath.Join(homeDir, ".cursor", "hooks.json")
-	if hasPacerHook(cursorHooksPath, "cursor") {
+	if hasCladeHook(cursorHooksPath, "cursor") {
 		results = append(results, checkResult{
 			name:    "Global Cursor hook",
 			ok:      true,
-			message: "pacer inject-context in ~/.cursor/hooks.json",
+			message: "clade inject-context in ~/.cursor/hooks.json",
 		})
 	} else {
 		cp := cursorHooksPath
@@ -802,7 +802,7 @@ func checkGlobalHooks() []checkResult {
 			name:    "Global Cursor hook",
 			ok:      false,
 			warning: true,
-			message: "not found — run 'pacer setup'",
+			message: "not found — run 'clade setup'",
 			fixFunc: func() error {
 				_, err := mergeCursorHooksJSON(cp, false)
 				return err
@@ -824,7 +824,7 @@ func checkGlobalHooks() []checkResult {
 			name:    "Global Claude /drop command",
 			ok:      false,
 			warning: true,
-			message: "not found — run 'pacer setup'",
+			message: "not found — run 'clade setup'",
 			fixFunc: func() error {
 				_, err := writeDropCommandFile(cp, false)
 				return err
@@ -846,7 +846,7 @@ func checkGlobalHooks() []checkResult {
 			name:    "Global Cursor /drop command",
 			ok:      false,
 			warning: true,
-			message: "not found — run 'pacer setup'",
+			message: "not found — run 'clade setup'",
 			fixFunc: func() error {
 				_, err := writeDropCommandFile(cp, false)
 				return err

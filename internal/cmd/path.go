@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/daniil-lyalko/pacer/internal/config"
+	"github.com/daniil-lyalko/clade/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -17,8 +17,8 @@ var pathCmd = &cobra.Command{
 	Long: `Prints the absolute path of a worktree to stdout.
 
 Useful for scripting:
-  cd $(pacer path foo)
-  code $(pacer path foo)
+  cd $(clade path foo)
+  code $(clade path foo)
 
 If --json is set, outputs {"path": "/absolute/path/to/worktree"}.
 Exits with error if worktree not found.`,

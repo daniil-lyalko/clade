@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/daniil-lyalko/pacer/internal/config"
-	"github.com/daniil-lyalko/pacer/internal/git"
-	"github.com/daniil-lyalko/pacer/internal/ui"
+	"github.com/daniil-lyalko/clade/internal/config"
+	"github.com/daniil-lyalko/clade/internal/git"
+	"github.com/daniil-lyalko/clade/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -16,14 +16,14 @@ var initForceFlag bool
 
 var initCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Setup a repo for pacer",
-	Long: `Initialize a repository for pacer.
+	Short: "Setup a repo for clade",
+	Long: `Initialize a repository for clade.
 
 This creates:
-  - .pacer/hooks.yaml.example (lifecycle hooks template)
-  - Appends .pacer/ to .gitignore
+  - .clade/hooks.yaml.example (lifecycle hooks template)
+  - Appends .clade/ to .gitignore
 
-For global Claude Code and Cursor hooks, run: pacer setup`,
+For global Claude Code and Cursor hooks, run: clade setup`,
 	RunE: runInit,
 }
 
@@ -49,16 +49,16 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	ui.Header("Initializing pacer in %s", git.GetRepoName(repoRoot))
+	ui.Header("Initializing clade in %s", git.GetRepoName(repoRoot))
 
 	// Write hooks.yaml.example template
-	pacerDir := filepath.Join(repoRoot, ".pacer")
-	if err := os.MkdirAll(pacerDir, 0755); err != nil {
-		ui.Warn("Failed to create .pacer/: %v", err)
+	cladeDir := filepath.Join(repoRoot, ".clade")
+	if err := os.MkdirAll(cladeDir, 0755); err != nil {
+		ui.Warn("Failed to create .clade/: %v", err)
 	} else {
-		hooksExamplePath := filepath.Join(pacerDir, "hooks.yaml.example")
+		hooksExamplePath := filepath.Join(cladeDir, "hooks.yaml.example")
 		if _, err := os.Stat(hooksExamplePath); os.IsNotExist(err) || initForceFlag {
-			ui.Info("Creating .pacer/hooks.yaml.example...")
+			ui.Info("Creating .clade/hooks.yaml.example...")
 			if err := writeHooksExample(hooksExamplePath); err != nil {
 				ui.Warn("Failed to write hooks.yaml.example: %v", err)
 			}
@@ -72,29 +72,29 @@ func runInit(cmd *cobra.Command, args []string) error {
 		ui.Warn("Failed to update .gitignore: %v", err)
 	}
 
-	ui.Success("Pacer initialized!")
-	ui.Detail("Run 'pacer setup' to install global hooks (one-time)")
+	ui.Success("Clade initialized!")
+	ui.Detail("Run 'clade setup' to install global hooks (one-time)")
 
 	return nil
 }
 
 // dropCommandContent is the shared content for /drop command (same for Claude Code and Cursor)
-const dropCommandContent = `Create a timestamped session summary in .pacer/dropbags/:
+const dropCommandContent = `Create a timestamped session summary in .clade/dropbags/:
 
 1. Create directory if needed:
 ` + "   ```bash" + `
-   mkdir -p .pacer/dropbags
+   mkdir -p .clade/dropbags
 ` + "   ```" + `
 
 2. Optionally read the most recent DROPBAG for continuity:
 ` + "   ```bash" + `
-   ls -t .pacer/dropbags/DROPBAG-*.md 2>/dev/null | head -1
+   ls -t .clade/dropbags/DROPBAG-*.md 2>/dev/null | head -1
 ` + "   ```" + `
 
 3. Write new timestamped file:
 ` + "   ```bash" + `
    TIMESTAMP=$(date +%Y-%m-%d-%H%M)
-   cat > .pacer/dropbags/DROPBAG-$TIMESTAMP.md <<'EOF'
+   cat > .clade/dropbags/DROPBAG-$TIMESTAMP.md <<'EOF'
    [your content here]
    EOF
 ` + "   ```" + `
@@ -122,7 +122,7 @@ After saving, confirm the timestamped file was created successfully.
 `
 
 // hooksExampleContent is the template for hooks.yaml.example
-const hooksExampleContent = `# Pacer Lifecycle Hooks
+const hooksExampleContent = `# Clade Lifecycle Hooks
 # Rename to hooks.yaml to activate
 # See USER_GUIDE.md for details
 
@@ -131,7 +131,7 @@ hooks:
   on_create:
     # - npm install
     # - cp .env.example .env
-    # - echo "Created $PACER_NAME"
+    # - echo "Created $CLADE_NAME"
 
   # Runs when resuming a worktree
   on_resume:
@@ -140,11 +140,11 @@ hooks:
 
   # Runs before removing a worktree
   on_remove:
-    # - echo "Cleaning up $PACER_NAME"
+    # - echo "Cleaning up $CLADE_NAME"
 
 # Available environment variables:
-# PACER_TYPE, PACER_NAME, PACER_PATH, PACER_REPO_NAME,
-# PACER_REPO_PATH, PACER_BRANCH, PACER_TICKET, PACER_PROJECT_NAME
+# CLADE_TYPE, CLADE_NAME, CLADE_PATH, CLADE_REPO_NAME,
+# CLADE_REPO_PATH, CLADE_BRANCH, CLADE_TICKET, CLADE_PROJECT_NAME
 `
 
 func writeHooksExample(path string) error {
@@ -153,7 +153,7 @@ func writeHooksExample(path string) error {
 
 func updateGitignore(path string) error {
 	linesToAdd := []string{
-		".pacer/",
+		".clade/",
 	}
 
 	// Read existing content
@@ -188,9 +188,9 @@ func updateGitignore(path string) error {
 		}
 	}
 
-	// Add comment header if we're adding pacer entries
-	if !strings.Contains(existingContent, "# Pacer") {
-		if _, err := f.WriteString("\n# Pacer\n"); err != nil {
+	// Add comment header if we're adding clade entries
+	if !strings.Contains(existingContent, "# Clade") {
+		if _, err := f.WriteString("\n# Clade\n"); err != nil {
 			return err
 		}
 	}
@@ -205,8 +205,8 @@ func updateGitignore(path string) error {
 	return nil
 }
 
-// InitRepo initializes a repo for pacer (used by other commands).
-// Only creates .pacer/ directory and updates .gitignore.
+// InitRepo initializes a repo for clade (used by other commands).
+// Only creates .clade/ directory and updates .gitignore.
 func InitRepo(repoPath string) error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -219,17 +219,17 @@ func InitRepo(repoPath string) error {
 	}
 
 	// Check if already initialized
-	pacerDir := filepath.Join(repoPath, ".pacer")
-	if _, err := os.Stat(pacerDir); err == nil {
+	cladeDir := filepath.Join(repoPath, ".clade")
+	if _, err := os.Stat(cladeDir); err == nil {
 		return nil // Already initialized
 	}
 
-	// Create .pacer/ with hooks.yaml.example
-	if err := os.MkdirAll(pacerDir, 0755); err != nil {
+	// Create .clade/ with hooks.yaml.example
+	if err := os.MkdirAll(cladeDir, 0755); err != nil {
 		return err
 	}
 
-	hooksExamplePath := filepath.Join(pacerDir, "hooks.yaml.example")
+	hooksExamplePath := filepath.Join(cladeDir, "hooks.yaml.example")
 	if _, err := os.Stat(hooksExamplePath); os.IsNotExist(err) {
 		writeHooksExample(hooksExamplePath)
 	}

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/daniil-lyalko/pacer/internal/ui"
+	"github.com/daniil-lyalko/clade/internal/ui"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
@@ -17,7 +17,7 @@ var setupForceFlag bool
 var setupCmd = &cobra.Command{
 	Use:   "setup",
 	Short: "Install global hooks for Claude Code and Cursor (one-time)",
-	Long: `Install pacer hooks globally so every project benefits automatically.
+	Long: `Install clade hooks globally so every project benefits automatically.
 
 This merges hooks into:
   - ~/.claude/settings.json  (SessionStart hook)
@@ -165,8 +165,8 @@ func planSetupActions(homeDir string, force bool) []setupAction {
 }
 
 func planClaudeHookAction(path string, force bool) setupAction {
-	const pacerCommand = "pacer inject-context"
 	const cladeCommand = "clade inject-context"
+	const legacyPacerCommand = "pacer inject-context"
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -187,16 +187,16 @@ func planClaudeHookAction(path string, force bool) setupAction {
 	}
 
 	content := string(data)
-	if strings.Contains(content, pacerCommand) && !force {
+	if strings.Contains(content, cladeCommand) && !force {
 		return setupAction{
 			description: "SessionStart hook",
 			filePath:    path,
 			actionType:  "skip",
 		}
 	}
-	if strings.Contains(content, cladeCommand) {
+	if strings.Contains(content, legacyPacerCommand) {
 		return setupAction{
-			description: "Migrate clade → pacer hook",
+			description: "Migrate pacer → clade hook",
 			filePath:    path,
 			actionType:  "migrate",
 			apply:       func() error { _, err := mergeClaudeSettingsHooks(path, force); return err },
@@ -211,8 +211,8 @@ func planClaudeHookAction(path string, force bool) setupAction {
 }
 
 func planCursorHookAction(path string, force bool) setupAction {
-	const pacerCommand = "pacer inject-context"
 	const cladeCommand = "clade inject-context"
+	const legacyPacerCommand = "pacer inject-context"
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -233,16 +233,16 @@ func planCursorHookAction(path string, force bool) setupAction {
 	}
 
 	content := string(data)
-	if strings.Contains(content, pacerCommand) && !force {
+	if strings.Contains(content, cladeCommand) && !force {
 		return setupAction{
 			description: "sessionStart hook",
 			filePath:    path,
 			actionType:  "skip",
 		}
 	}
-	if strings.Contains(content, cladeCommand) {
+	if strings.Contains(content, legacyPacerCommand) {
 		return setupAction{
-			description: "Migrate clade → pacer hook",
+			description: "Migrate pacer → clade hook",
 			filePath:    path,
 			actionType:  "migrate",
 			apply:       func() error { _, err := mergeCursorHooksJSON(path, force); return err },
@@ -282,23 +282,23 @@ func abbreviatePath(path, homeDir string) string {
 	return path
 }
 
-// globalHooksInstalled checks if at least one AI tool has pacer hooks configured
+// globalHooksInstalled checks if at least one AI tool has clade hooks configured
 func globalHooksInstalled() bool {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return true // Can't check, assume OK
 	}
-	claude := hasPacerHook(filepath.Join(homeDir, ".claude", "settings.json"), "claude")
-	cursor := hasPacerHook(filepath.Join(homeDir, ".cursor", "hooks.json"), "cursor")
+	claude := hasCladeHook(filepath.Join(homeDir, ".claude", "settings.json"), "claude")
+	cursor := hasCladeHook(filepath.Join(homeDir, ".cursor", "hooks.json"), "cursor")
 	return claude || cursor
 }
 
-// mergeClaudeSettingsHooks safely merges the pacer SessionStart hook into
+// mergeClaudeSettingsHooks safely merges the clade SessionStart hook into
 // an existing ~/.claude/settings.json, preserving all other keys.
 // Returns (changed, error).
 func mergeClaudeSettingsHooks(path string, force bool) (bool, error) {
-	const pacerCommand = "pacer inject-context"
 	const cladeCommand = "clade inject-context"
+	const legacyPacerCommand = "pacer inject-context"
 
 	// Read existing file
 	var root map[string]json.RawMessage
@@ -342,10 +342,10 @@ func mergeClaudeSettingsHooks(path string, force bool) (bool, error) {
 		}
 	}
 
-	// Check if pacer hook already present
+	// Check if clade hook already present
 	for i, entry := range sessionStart {
 		for j, h := range entry.Hooks {
-			if h.Command == pacerCommand {
+			if h.Command == cladeCommand {
 				if !force {
 					return false, nil // Already configured
 				}
@@ -354,9 +354,9 @@ func mergeClaudeSettingsHooks(path string, force bool) (bool, error) {
 				_ = j
 				return false, nil
 			}
-			if h.Command == cladeCommand {
-				// Migration: replace clade with pacer
-				sessionStart[i].Hooks[j].Command = pacerCommand
+			if h.Command == legacyPacerCommand {
+				// Migration: replace pacer with clade
+				sessionStart[i].Hooks[j].Command = cladeCommand
 				goto write
 			}
 		}
@@ -369,7 +369,7 @@ func mergeClaudeSettingsHooks(path string, force bool) (bool, error) {
 			Type    string `json:"type"`
 			Command string `json:"command"`
 		}{
-			{Type: "command", Command: pacerCommand},
+			{Type: "command", Command: cladeCommand},
 		},
 	})
 
@@ -396,11 +396,11 @@ write:
 	var stopHooks []asyncHookEntry
 	if raw, ok := hooksObj["Stop"]; ok {
 		if err := json.Unmarshal(raw, &stopHooks); err == nil {
-			// Check if pacer auto-dropbag already present
+			// Check if clade auto-dropbag already present
 			stopNeedsUpdate := true
 			for _, entry := range stopHooks {
 				for _, h := range entry.Hooks {
-					if h.Command == "pacer auto-dropbag" {
+					if h.Command == "clade auto-dropbag" {
 						stopNeedsUpdate = false
 						break
 					}
@@ -414,7 +414,7 @@ write:
 					Hooks: []asyncHook{
 						{
 							Type:    "command",
-							Command: "pacer auto-dropbag",
+							Command: "clade auto-dropbag",
 							Async:   true,
 							Timeout: 30,
 						},
@@ -430,7 +430,7 @@ write:
 				Hooks: []asyncHook{
 					{
 						Type:    "command",
-						Command: "pacer auto-dropbag",
+						Command: "clade auto-dropbag",
 						Async:   true,
 						Timeout: 30,
 					},
@@ -446,11 +446,11 @@ write:
 	var preCompactHooks []hookEntry
 	if raw, ok := hooksObj["PreCompact"]; ok {
 		if err := json.Unmarshal(raw, &preCompactHooks); err == nil {
-			// Check if pacer context-warning already present
+			// Check if clade context-warning already present
 			preCompactNeedsUpdate := true
 			for _, entry := range preCompactHooks {
 				for _, h := range entry.Hooks {
-					if h.Command == "pacer context-warning" {
+					if h.Command == "clade context-warning" {
 						preCompactNeedsUpdate = false
 						break
 					}
@@ -465,7 +465,7 @@ write:
 						Type    string `json:"type"`
 						Command string `json:"command"`
 					}{
-						{Type: "command", Command: "pacer context-warning"},
+						{Type: "command", Command: "clade context-warning"},
 					},
 				})
 			}
@@ -479,7 +479,7 @@ write:
 					Type    string `json:"type"`
 					Command string `json:"command"`
 				}{
-					{Type: "command", Command: "pacer context-warning"},
+					{Type: "command", Command: "clade context-warning"},
 				},
 			},
 		}
@@ -510,12 +510,12 @@ write:
 	return true, nil
 }
 
-// mergeCursorHooksJSON safely merges the pacer sessionStart hook into
+// mergeCursorHooksJSON safely merges the clade sessionStart hook into
 // an existing ~/.cursor/hooks.json, preserving all other keys.
 // Returns (changed, error).
 func mergeCursorHooksJSON(path string, force bool) (bool, error) {
-	const pacerCommand = "pacer inject-context"
 	const cladeCommand = "clade inject-context"
+	const legacyPacerCommand = "pacer inject-context"
 
 	// Read existing file
 	var root map[string]json.RawMessage
@@ -559,22 +559,22 @@ func mergeCursorHooksJSON(path string, force bool) (bool, error) {
 		}
 	}
 
-	// Check if pacer hook already present
+	// Check if clade hook already present
 	for i, entry := range sessionStart {
-		if entry.Command == pacerCommand {
+		if entry.Command == cladeCommand {
 			if !force {
 				return false, nil
 			}
 			return false, nil
 		}
-		if entry.Command == cladeCommand {
-			sessionStart[i].Command = pacerCommand
+		if entry.Command == legacyPacerCommand {
+			sessionStart[i].Command = cladeCommand
 			goto write
 		}
 	}
 
 	// Not found — add it
-	sessionStart = append(sessionStart, cursorHookEntry{Command: pacerCommand})
+	sessionStart = append(sessionStart, cursorHookEntry{Command: cladeCommand})
 
 write:
 	sessionStartJSON, err := json.Marshal(sessionStart)
@@ -623,13 +623,13 @@ func writeDropCommandFile(path string, force bool) (bool, error) {
 	return true, nil
 }
 
-// hasPacerHook checks if a given settings/hooks file has the pacer inject-context hook.
+// hasCladeHook checks if a given settings/hooks file has the clade inject-context hook.
 // format should be "claude" or "cursor".
-func hasPacerHook(path string, format string) bool {
+func hasCladeHook(path string, format string) bool {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return false
 	}
 	// Simple string check — good enough for detection
-	return strings.Contains(string(data), "pacer inject-context")
+	return strings.Contains(string(data), "clade inject-context")
 }

@@ -9,7 +9,7 @@
 
 ## Context
 
-Pacer's DROPBAG system provides session continuity — a markdown snapshot of "where you left off" that gets injected into the next session via the `SessionStart` hook. Currently, DROPBAGs are created manually via the `/drop` command. Users forget to `/drop` before closing sessions, losing context.
+Clade's DROPBAG system provides session continuity — a markdown snapshot of "where you left off" that gets injected into the next session via the `SessionStart` hook. Currently, DROPBAGs are created manually via the `/drop` command. Users forget to `/drop` before closing sessions, losing context.
 
 The question: which Claude Code hook should auto-generate DROPBAGs?
 
@@ -50,7 +50,7 @@ Manual /drop    Human-curated checkpoint    Explicit       No
     "Stop": [{
       "hooks": [{
         "type": "command",
-        "command": "pacer auto-dropbag",
+        "command": "clade auto-dropbag",
         "async": true,
         "timeout": 30
       }]
@@ -59,11 +59,11 @@ Manual /drop    Human-curated checkpoint    Explicit       No
 }
 ```
 
-The `pacer auto-dropbag` command:
+The `clade auto-dropbag` command:
 1. Reads `transcript_path` from stdin JSON (provided by Claude Code)
 2. Parses the transcript JSONL for: files modified, decisions made, errors, current task state
 3. Debounces: skips if last write was <60 seconds ago AND no git changes detected
-4. Writes structured `DROPBAG.md` to `.pacer/dropbags/`
+4. Writes structured `DROPBAG.md` to `.clade/dropbags/`
 5. Exits silently on any error (safety net, not blocking operation)
 
 **Why async:** `async: true` means the hook never blocks user interaction and avoids the [infinite loop footgun](https://github.com/thedotmack/claude-mem/issues/987) where Stop hook output triggers another response.
@@ -78,7 +78,7 @@ The `pacer auto-dropbag` command:
     "PreCompact": [{
       "hooks": [{
         "type": "command",
-        "command": "pacer context-warning",
+        "command": "clade context-warning",
         "timeout": 5
       }]
     }]
@@ -86,9 +86,9 @@ The `pacer auto-dropbag` command:
 }
 ```
 
-The `pacer context-warning` command:
+The `clade context-warning` command:
 1. Prints a calm message to stderr (shown to user):
-   > "Context getting full. Auto-DROPBAG saved. Run /drop to add your notes, or `pacer resume` to start fresh with full context."
+   > "Context getting full. Auto-DROPBAG saved. Run /drop to add your notes, or `clade resume` to start fresh with full context."
 2. Does NOT write a DROPBAG (Stop hook already did)
 3. Does NOT try to inject into post-compaction context (can't — no mechanism exists)
 4. Completes in <1 second
@@ -163,7 +163,7 @@ The shift-handoff metaphor from Anthropic's ["Effective Harnesses for Long-Runni
 1. Work in focused sprints (60-90 minutes or 25-30 messages)
 2. Stop hook auto-saves DROPBAGs continuously (async, debounced)
 3. At natural stopping points, run `/drop` for a curated checkpoint
-4. If PreCompact fires, take the hint — `/drop` and `pacer resume` for a fresh session
+4. If PreCompact fires, take the hint — `/drop` and `clade resume` for a fresh session
 5. Fresh session gets clean 1M-token window + curated DROPBAG via SessionStart
 
 **Tradeoff:** Fresh restarts lose conversational thread memory (rejected approaches, implicit preferences). Mitigated by the DROPBAG's "Open Questions" and "Decisions" sections capturing this explicitly.
@@ -172,7 +172,7 @@ The shift-handoff metaphor from Anthropic's ["Effective Harnesses for Long-Runni
 
 ## Implementation Plan
 
-### New command: `pacer auto-dropbag`
+### New command: `clade auto-dropbag`
 
 Hidden command (like `inject-context`), called by the Stop hook.
 
@@ -184,7 +184,7 @@ Hidden command (like `inject-context`), called by the Stop hook.
 // Fast: must complete in <2s for the common case
 ```
 
-### New command: `pacer context-warning`
+### New command: `clade context-warning`
 
 Hidden command, called by the PreCompact hook.
 
@@ -194,21 +194,21 @@ Hidden command, called by the PreCompact hook.
 // Completes in <1s
 ```
 
-### Updated `pacer setup`
+### Updated `clade setup`
 
 Registers three hooks (currently only SessionStart):
 
 ```json
 {
   "hooks": {
-    "SessionStart": [{"matcher": "*", "hooks": [{"type": "command", "command": "pacer inject-context"}]}],
-    "Stop": [{"hooks": [{"type": "command", "command": "pacer auto-dropbag", "async": true, "timeout": 30}]}],
-    "PreCompact": [{"hooks": [{"type": "command", "command": "pacer context-warning", "timeout": 5}]}]
+    "SessionStart": [{"matcher": "*", "hooks": [{"type": "command", "command": "clade inject-context"}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "clade auto-dropbag", "async": true, "timeout": 30}]}],
+    "PreCompact": [{"hooks": [{"type": "command", "command": "clade context-warning", "timeout": 5}]}]
   }
 }
 ```
 
-### Updated `pacer inject-context`
+### Updated `clade inject-context`
 
 Labels DROPBAG source when injecting:
 - `[Developer notes]` for manual `/drop`

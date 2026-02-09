@@ -1,4 +1,4 @@
-# GolangCI-Lint configuration for pacer
+# GolangCI-Lint configuration for clade
 
 linters:
   enable:

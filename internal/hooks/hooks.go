@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/daniil-lyalko/pacer/internal/config"
+	"github.com/daniil-lyalko/clade/internal/config"
 	"gopkg.in/yaml.v3"
 )
 
@@ -43,6 +43,13 @@ type Env struct {
 // toEnvVars converts Env to environment variable strings
 func (e *Env) toEnvVars() []string {
 	vars := []string{
+		fmt.Sprintf("CLADE_TYPE=%s", e.Type),
+		fmt.Sprintf("CLADE_NAME=%s", e.Name),
+		fmt.Sprintf("CLADE_PATH=%s", e.Path),
+		fmt.Sprintf("CLADE_REPO_NAME=%s", e.RepoName),
+		fmt.Sprintf("CLADE_REPO_PATH=%s", e.RepoPath),
+		fmt.Sprintf("CLADE_BRANCH=%s", e.Branch),
+		// Deprecated aliases (one release backward compat)
 		fmt.Sprintf("PACER_TYPE=%s", e.Type),
 		fmt.Sprintf("PACER_NAME=%s", e.Name),
 		fmt.Sprintf("PACER_PATH=%s", e.Path),
@@ -51,27 +58,29 @@ func (e *Env) toEnvVars() []string {
 		fmt.Sprintf("PACER_BRANCH=%s", e.Branch),
 	}
 	if e.Ticket != "" {
+		vars = append(vars, fmt.Sprintf("CLADE_TICKET=%s", e.Ticket))
 		vars = append(vars, fmt.Sprintf("PACER_TICKET=%s", e.Ticket))
 	}
 	if e.ProjectName != "" {
+		vars = append(vars, fmt.Sprintf("CLADE_PROJECT_NAME=%s", e.ProjectName))
 		vars = append(vars, fmt.Sprintf("PACER_PROJECT_NAME=%s", e.ProjectName))
 	}
 	return vars
 }
 
 // globalHooksPath returns the path to global hooks config
-// Always uses ~/.config/pacer/ for consistency across platforms
+// Always uses ~/.config/clade/ for consistency across platforms
 func globalHooksPath() (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(homeDir, ".config", "pacer", "hooks.yaml"), nil
+	return filepath.Join(homeDir, ".config", "clade", "hooks.yaml"), nil
 }
 
 // repoHooksPath returns the path to repo-specific hooks config
 func repoHooksPath(repoPath string) string {
-	return filepath.Join(repoPath, ".pacer", "hooks.yaml")
+	return filepath.Join(repoPath, ".clade", "hooks.yaml")
 }
 
 // loadHooksConfig loads hooks from a YAML file
@@ -147,7 +156,7 @@ func RunHooks(event Event, env *Env) []Result {
 		}
 	}
 
-	// Write results to .pacer/last-hook-results.json for visibility in inject-context
+	// Write results to .clade/last-hook-results.json for visibility in inject-context
 	if env.Path != "" {
 		writeHookResults(env.Path, results)
 	}
@@ -202,12 +211,12 @@ func HasHooks(event Event, repoPath string) bool {
 	return false
 }
 
-// writeHookResults writes hook execution results to .pacer/last-hook-results.json
+// writeHookResults writes hook execution results to .clade/last-hook-results.json
 // This allows inject-context to surface hook failures at session start.
 func writeHookResults(worktreePath string, results []Result) {
-	resultsPath := filepath.Join(worktreePath, ".pacer", "last-hook-results.json")
+	resultsPath := filepath.Join(worktreePath, ".clade", "last-hook-results.json")
 
-	// Ensure .pacer directory exists
+	// Ensure .clade directory exists
 	if err := os.MkdirAll(filepath.Dir(resultsPath), 0755); err != nil {
 		return // Silent failure - this is best-effort
 	}
