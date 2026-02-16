@@ -18,16 +18,16 @@ Clade is a well-architected worktree management CLI with a clean separation of c
 
 Clade has **two distinct hook systems** that operate independently:
 
-**Clade Lifecycle Hooks** (`/Users/dlyalko/daniil/pacer/internal/hooks/hooks.go`):
+**Clade Lifecycle Hooks** (`/Users/dlyalko/daniil/clade/internal/hooks/hooks.go`):
 - Three events: `on_create`, `on_resume`, `on_remove`
 - Configured in YAML (`~/.config/clade/hooks.yaml` global, `.clade/hooks.yaml` per-repo)
 - Executed via `sh -c` with 30-second timeout
 - Environment variables: `CLADE_TYPE`, `CLADE_NAME`, `CLADE_PATH`, `CLADE_REPO_NAME`, `CLADE_REPO_PATH`, `CLADE_BRANCH`, `CLADE_TICKET`
 - Global hooks run first, then per-repo hooks
 - Failure in one hook does not block subsequent hooks
-- Per-repo hooks use a TOFU (Trust On First Use) model with SHA-256 hash verification (`/Users/dlyalko/daniil/pacer/internal/config/trust.go`)
+- Per-repo hooks use a TOFU (Trust On First Use) model with SHA-256 hash verification (`/Users/dlyalko/daniil/clade/internal/config/trust.go`)
 
-**Agent Hooks** (`/Users/dlyalko/daniil/pacer/internal/cmd/setup.go`, `/Users/dlyalko/daniil/pacer/internal/cmd/inject.go`):
+**Agent Hooks** (`/Users/dlyalko/daniil/clade/internal/cmd/setup.go`, `/Users/dlyalko/daniil/clade/internal/cmd/inject.go`):
 - Single event: Claude Code `SessionStart` / Cursor `sessionStart`
 - Calls `clade inject-context` which gathers: DROPBAG, git status, recent commits, TODOs, ticket metadata
 - Auto-detects output format: plain text for Claude Code (checks `CLAUDE_PROJECT_DIR` env var), JSON for Cursor
@@ -65,7 +65,7 @@ On the Clade lifecycle side:
 
 ### Security Model Assessment
 
-The TOFU trust model in `/Users/dlyalko/daniil/pacer/internal/config/trust.go` is solid:
+The TOFU trust model in `/Users/dlyalko/daniil/clade/internal/config/trust.go` is solid:
 - SHA-256 hash verification catches modified hooks
 - Interactive prompt shows hook content before trust
 - `CLADE_TRUST_REPO_HOOKS=1` bypass for CI environments
@@ -175,7 +175,7 @@ Copy repo-specific git config (like `.gitattributes`, merge strategies) to the w
 When creating a worktree with `--open cursor`, generate a `.code-workspace` file that includes the worktree path and any related directories.
 
 **8. Notification on long-running hooks:**
-The 30-second timeout in `runSingleHook` (`/Users/dlyalko/daniil/pacer/internal/hooks/hooks.go`, line 158) is good, but there is no progress feedback. A simple "Running on_create hooks..." with elapsed time would improve UX for hooks like `npm install` that take 5-15 seconds.
+The 30-second timeout in `runSingleHook` (`/Users/dlyalko/daniil/clade/internal/hooks/hooks.go`, line 158) is good, but there is no progress feedback. A simple "Running on_create hooks..." with elapsed time would improve UX for hooks like `npm install` that take 5-15 seconds.
 
 ---
 
@@ -210,7 +210,7 @@ clade cleanup PROJ-123 --pr
 ```
 
 **Opportunity 3: CI feedback in context injection**
-The `inject-context` command (`/Users/dlyalko/daniil/pacer/internal/cmd/inject.go`) currently gathers git status, commits, TODOs, and DROPBAGs. Adding CI status for the current branch would give the AI immediate visibility into build state:
+The `inject-context` command (`/Users/dlyalko/daniil/clade/internal/cmd/inject.go`) currently gathers git status, commits, TODOs, and DROPBAGs. Adding CI status for the current branch would give the AI immediate visibility into build state:
 
 ```
 ## CI Status
@@ -227,7 +227,7 @@ This requires a network call, which violates the "no network on hot path" design
 
 ### Current Doctor Checks
 
-The existing `clade doctor` (`/Users/dlyalko/daniil/pacer/internal/cmd/doctor.go`) checks:
+The existing `clade doctor` (`/Users/dlyalko/daniil/clade/internal/cmd/doctor.go`) checks:
 
 1. Config file validity
 2. State file validity

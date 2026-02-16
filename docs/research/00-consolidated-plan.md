@@ -91,7 +91,7 @@ Medium effort. These strengthen context management and improve the CLI for power
 
 ### 2.4 Convert `/drop` to a proper skill
 **Reports:** Vasquez (short-term)
-**File:** `.claude/commands/drop.md` → `.claude/skills/pacer-drop/SKILL.md`
+**File:** `.claude/commands/drop.md` → `.claude/skills/clade-drop/SKILL.md`
 **Change:** Add YAML frontmatter with description for auto-detection. Claude can auto-invoke the drop skill when it detects session-end context.
 
 ### 2.5 Expand doctor checks

@@ -24,23 +24,23 @@ clade init / doctor / status  # meta
 
 This is close to the `noun verb` or `verb noun` patterns that feel natural. The `-t/--type` flag for branch prefix is a clean unification of what was previously 6 separate commands (`exp`, `feat`, `bug`, etc.). The evolution from v0.1 to v0.4 shows good instinct -- the API surface contracted, not expanded.
 
-Shell completion support via Cobra's `ValidArgsFunction` is implemented in `/Users/dlyalko/daniil/pacer/internal/cmd/resume.go` (line 646) and `/Users/dlyalko/daniil/pacer/internal/cmd/cleanup.go` (line 569). This is essential infrastructure that many tools forget.
+Shell completion support via Cobra's `ValidArgsFunction` is implemented in `/Users/dlyalko/daniil/clade/internal/cmd/resume.go` (line 646) and `/Users/dlyalko/daniil/clade/internal/cmd/cleanup.go` (line 569). This is essential infrastructure that many tools forget.
 
 The `--dry-run` flag on both `work` and `cleanup` commands follows a well-established Unix convention. Good.
 
-Branch name validation in `/Users/dlyalko/daniil/pacer/internal/git/branch.go` (lines 17-46) rejects shell metacharacters, path traversal, and control characters. This is security-conscious for a tool that constructs `exec.Command` calls.
+Branch name validation in `/Users/dlyalko/daniil/clade/internal/git/branch.go` (lines 17-46) rejects shell metacharacters, path traversal, and control characters. This is security-conscious for a tool that constructs `exec.Command` calls.
 
 ### Unix Philosophy Violations
 
-**Violation 1: Interactive prompts on the critical path.** The biggest problem. In `/Users/dlyalko/daniil/pacer/internal/cmd/worktree.go` (lines 76-87), creating a worktree prompts for branch name confirmation -- even when the default is obvious. When I type `clade foo -t spike`, I should get `spike/foo` without being asked. The prompt should only fire when the name is ambiguous or when no name is provided. This breaks piping. This breaks scripting. This breaks automation.
+**Violation 1: Interactive prompts on the critical path.** The biggest problem. In `/Users/dlyalko/daniil/clade/internal/cmd/worktree.go` (lines 76-87), creating a worktree prompts for branch name confirmation -- even when the default is obvious. When I type `clade foo -t spike`, I should get `spike/foo` without being asked. The prompt should only fire when the name is ambiguous or when no name is provided. This breaks piping. This breaks scripting. This breaks automation.
 
 The design philosophy stated in ARCHITECTURE.md says "Speed First -- `clade exp` should take <2 seconds." Interactive prompts are the enemy of speed.
 
-**Violation 2: The dashboard-as-default.** When you type `clade` with no arguments, it shows an interactive dashboard with a `promptui.Select` picker (see `/Users/dlyalko/daniil/pacer/internal/cmd/root.go`, lines 163-179). This is hostile to scripting. It means `clade` cannot be called from a script at all -- it blocks on stdin. A bare `clade` should print a short usage/status summary to stdout and exit 0, not enter an interactive mode. Interactive mode should be opt-in, e.g., `clade --interactive` or `clade tui`.
+**Violation 2: The dashboard-as-default.** When you type `clade` with no arguments, it shows an interactive dashboard with a `promptui.Select` picker (see `/Users/dlyalko/daniil/clade/internal/cmd/root.go`, lines 163-179). This is hostile to scripting. It means `clade` cannot be called from a script at all -- it blocks on stdin. A bare `clade` should print a short usage/status summary to stdout and exit 0, not enter an interactive mode. Interactive mode should be opt-in, e.g., `clade --interactive` or `clade tui`.
 
 Compare: `git` with no args prints usage. `docker` with no args prints usage. `kubectl` with no args prints usage. None of them enter an interactive menu. There is precedent for this in `lazygit` and `tig`, but those are explicitly TUI tools, not workflow CLIs.
 
-**Violation 3: Insufficient machine-readable output.** The `clade list --json` flag exists (implemented in `/Users/dlyalko/daniil/pacer/internal/cmd/list.go`, line 27), but `--json` is missing from `status`, `resume`, `cleanup`, `doctor`, and `work`. Every command that produces output should have a `--json` or `--format` flag. This is table stakes for composability in 2026. The [Command Line Interface Guidelines](https://clig.dev/) are explicit about this.
+**Violation 3: Insufficient machine-readable output.** The `clade list --json` flag exists (implemented in `/Users/dlyalko/daniil/clade/internal/cmd/list.go`, line 27), but `--json` is missing from `status`, `resume`, `cleanup`, `doctor`, and `work`. Every command that produces output should have a `--json` or `--format` flag. This is table stakes for composability in 2026. The [Command Line Interface Guidelines](https://clig.dev/) are explicit about this.
 
 **Violation 4: No quiet mode.** There is no `--quiet` or `-q` flag. When running hooks in CI, you want `clade foo -t spike -q` to produce zero output on success and only write to stderr on failure. The current output is all informational ("Creating spike: try-redis", "Copying config files...", "Worktree created!") -- useful for humans, noise for scripts.
 
@@ -48,13 +48,13 @@ Compare: `git` with no args prints usage. `docker` with no args prints usage. `k
 
 ### Flag Design Issues
 
-The `-v` flag is version (`/Users/dlyalko/daniil/pacer/internal/cmd/root.go`, line 69), while verbose is `-V` (line 66). This violates convention. Almost every Unix tool uses `-v` for verbose and `--version` (long form only) for version. When someone types `clade -v`, they expect verbosity, not a version string. This will burn users.
+The `-v` flag is version (`/Users/dlyalko/daniil/clade/internal/cmd/root.go`, line 69), while verbose is `-V` (line 66). This violates convention. Almost every Unix tool uses `-v` for verbose and `--version` (long form only) for version. When someone types `clade -v`, they expect verbosity, not a version string. This will burn users.
 
-The `work` command is registered but hidden (`workCmd.Hidden = true` in `/Users/dlyalko/daniil/pacer/internal/cmd/work.go`, line 66). This means `clade work foo` works, but `clade help` does not show it. Users who find it in docs will think it is gone. If it works, document it. If you want the shorthand to be canonical, at least show it in help with a note.
+The `work` command is registered but hidden (`workCmd.Hidden = true` in `/Users/dlyalko/daniil/clade/internal/cmd/work.go`, line 66). This means `clade work foo` works, but `clade help` does not show it. Users who find it in docs will think it is gone. If it works, document it. If you want the shorthand to be canonical, at least show it in help with a note.
 
 ### The Typo Guard
 
-The Levenshtein-based subcommand suggestion in `/Users/dlyalko/daniil/pacer/internal/cmd/root.go` (lines 112-125) is clever. Since `clade <name>` is the default action, a typo like `clade lsit` would silently create a worktree named "lsit" instead of running `clade list`. The edit distance check catches this. Good defensive design. But the threshold of 2 might be too generous -- "stat" is distance 2 from "list". Consider distance 1 for short commands.
+The Levenshtein-based subcommand suggestion in `/Users/dlyalko/daniil/clade/internal/cmd/root.go` (lines 112-125) is clever. Since `clade <name>` is the default action, a typo like `clade lsit` would silently create a worktree named "lsit" instead of running `clade list`. The edit distance check catches this. Good defensive design. But the threshold of 2 might be too generous -- "stat" is distance 2 from "list". Consider distance 1 for short commands.
 
 ---
 
@@ -62,9 +62,9 @@ The Levenshtein-based subcommand suggestion in `/Users/dlyalko/daniil/pacer/inte
 
 ### What Clade Does Right
 
-The git layer in `/Users/dlyalko/daniil/pacer/internal/git/` is thin and correct. It shells out to `git` rather than using a Go library like go-git. This is the right call. The git CLI is the canonical interface. go-git does not support worktrees well, and shelling out means you inherit git's own bug fixes and config handling.
+The git layer in `/Users/dlyalko/daniil/clade/internal/git/` is thin and correct. It shells out to `git` rather than using a Go library like go-git. This is the right call. The git CLI is the canonical interface. go-git does not support worktrees well, and shelling out means you inherit git's own bug fixes and config handling.
 
-`ListWorktreesDetailed` (line 106 of `/Users/dlyalko/daniil/pacer/internal/git/worktree.go`) uses `--porcelain` output, which is the correct machine-stable format. Good.
+`ListWorktreesDetailed` (line 106 of `/Users/dlyalko/daniil/clade/internal/git/worktree.go`) uses `--porcelain` output, which is the correct machine-stable format. Good.
 
 `RepairWorktrees` (line 278) handles the post-migration case where paths change. This is operational awareness -- most tools do not account for worktree links breaking after directory renames.
 
@@ -84,9 +84,9 @@ The git layer in `/Users/dlyalko/daniil/pacer/internal/git/` is thin and correct
 
 ### Performance Concerns in `internal/git`
 
-In `/Users/dlyalko/daniil/pacer/internal/git/branch.go`, `CreateWorktreeNew` (line 136) calls `Fetch(repoPath)` synchronously. This is a network call. For large repos or slow connections, this is the bottleneck. The function comment says "Ignore error - might be offline" which is the right fallback, but fetching on every creation is expensive. Consider making fetch opt-in (`--fetch`) or doing it in the background.
+In `/Users/dlyalko/daniil/clade/internal/git/branch.go`, `CreateWorktreeNew` (line 136) calls `Fetch(repoPath)` synchronously. This is a network call. For large repos or slow connections, this is the bottleneck. The function comment says "Ignore error - might be offline" which is the right fallback, but fetching on every creation is expensive. Consider making fetch opt-in (`--fetch`) or doing it in the background.
 
-In `/Users/dlyalko/daniil/pacer/internal/git/status.go`, `GetRecentCommits` (line 75) has a bug:
+In `/Users/dlyalko/daniil/clade/internal/git/status.go`, `GetRecentCommits` (line 75) has a bug:
 
 ```go
 cmd := exec.Command("git", "log", "--oneline", "-n", string(rune('0'+count)))
@@ -150,7 +150,7 @@ Clade has three hook layers:
 2. **Per-repo hooks** (`{repo}/.clade/hooks.yaml`) -- repo-specific, with TOFU trust
 3. **Agent hooks** (`.claude/settings.json`, `.cursor/hooks.json`) -- handled by the agent, not clade
 
-The lifecycle events are `on_create`, `on_resume`, `on_remove`. The trust model uses SHA-256 hash verification for per-repo hooks (`/Users/dlyalko/daniil/pacer/internal/config/trust.go`).
+The lifecycle events are `on_create`, `on_resume`, `on_remove`. The trust model uses SHA-256 hash verification for per-repo hooks (`/Users/dlyalko/daniil/clade/internal/config/trust.go`).
 
 ### Assessment
 
@@ -229,7 +229,7 @@ This is enormously useful for CI and scripting.
 
 ### Current Architecture
 
-Clade's state management uses a single JSON file (`~/clade/state.json` described in `/Users/dlyalko/daniil/pacer/ARCHITECTURE.md`). The file is read/written atomically on every operation. At small scale (5 repos, 10 worktrees), this is fine.
+Clade's state management uses a single JSON file (`~/clade/state.json` described in `/Users/dlyalko/daniil/clade/ARCHITECTURE.md`). The file is read/written atomically on every operation. At small scale (5 repos, 10 worktrees), this is fine.
 
 ### Scale Concerns
 

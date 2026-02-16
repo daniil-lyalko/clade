@@ -22,14 +22,15 @@ type CladeMetadata struct {
 
 // ContextOutput holds all the context to be injected
 type ContextOutput struct {
-	Dropbag    *DropbagInfo
-	GitStatus  *git.Status
-	Commits    []string
-	Todos      []TodoItem
-	Metadata   *CladeMetadata
-	RepoName   string
-	BranchName string
-	Dir        string // Directory where context was gathered (for path resolution)
+	Dropbag     *DropbagInfo
+	AutoDropbag *DropbagInfo // Auto-generated from session transcript
+	GitStatus   *git.Status
+	Commits     []string
+	Todos       []TodoItem
+	Metadata    *CladeMetadata
+	RepoName    string
+	BranchName  string
+	Dir         string // Directory where context was gathered (for path resolution)
 }
 
 // GatherContext collects all context information for a directory
@@ -44,9 +45,14 @@ func GatherContext(dir string) (*ContextOutput, error) {
 		ctx.BranchName = branch
 	}
 
-	// Read DROPBAG.md
+	// Read DROPBAG.md (manual /drop)
 	if dropbag, err := ReadDropbag(dir); err == nil {
 		ctx.Dropbag = dropbag
+	}
+
+	// Read DROPBAG-auto.md (auto-generated from transcript)
+	if autoDropbag, err := ReadAutoDropbag(dir); err == nil {
+		ctx.AutoDropbag = autoDropbag
 	}
 
 	// Get git status
@@ -77,7 +83,23 @@ func FormatContext(ctx *ContextOutput) string {
 
 	sb.WriteString("# Session Context\n\n")
 
-	// DROPBAG.md section
+	// Auto-DROPBAG section (from previous session transcript, most recent context)
+	if ctx.AutoDropbag != nil && ctx.AutoDropbag.Exists {
+		header := fmt.Sprintf("## Session Context (from %s)", ctx.AutoDropbag.RelativeAge)
+
+		age := time.Since(ctx.AutoDropbag.ModTime)
+		isStale := age > 48*time.Hour
+
+		if isStale {
+			header += " ⚠️  STALE"
+		}
+		sb.WriteString(header + "\n\n")
+
+		sb.WriteString(ctx.AutoDropbag.Content)
+		sb.WriteString("\n\n")
+	}
+
+	// Manual DROPBAG section (from /drop command)
 	if ctx.Dropbag != nil && ctx.Dropbag.Exists {
 		header := fmt.Sprintf("## DROPBAG (from %s)", ctx.Dropbag.RelativeAge)
 

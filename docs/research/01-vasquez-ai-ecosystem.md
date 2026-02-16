@@ -268,7 +268,7 @@ And get: the SessionStart hook, the `/drop` skill, context injection, and worktr
 
 **Why it matters:** This moves Clade from a CLI tool you run to an **invisible intelligence layer**. The user never types `clade resume`. They just open Claude Code in a worktree and Claude says: "Welcome back. Last session you were debugging the Redis connection pool. You identified the issue in `pool.go:142` but hadn't committed the fix yet. The PR for the related frontend change was merged 3 hours ago by your teammate. Here's what I suggest we do first..."
 
-**Technical path:** Create a Clade skill at `.claude/skills/pacer-resume/SKILL.md` with `auto-invoke: true` and a description that triggers on session start. The skill calls `clade inject-context` internally but adds synthesis via Claude's own reasoning. This leverages the skills auto-invoke system so the user never explicitly runs anything.
+**Technical path:** Create a Clade skill at `.claude/skills/clade-resume/SKILL.md` with `auto-invoke: true` and a description that triggers on session start. The skill calls `clade inject-context` internally but adds synthesis via Claude's own reasoning. This leverages the skills auto-invoke system so the user never explicitly runs anything.
 
 ---
 

@@ -145,9 +145,9 @@ func runSetup(cmd *cobra.Command, args []string) error {
 func planSetupActions(homeDir string, force bool) []setupAction {
 	var actions []setupAction
 
-	// 1. Claude hook in ~/.claude/settings.json
+	// 1. Claude hooks in ~/.claude/settings.json
 	claudeSettingsPath := filepath.Join(homeDir, ".claude", "settings.json")
-	actions = append(actions, planClaudeHookAction(claudeSettingsPath, force))
+	actions = append(actions, planClaudeHookActions(claudeSettingsPath, force)...)
 
 	// 2. Claude /drop command
 	claudeDropPath := filepath.Join(homeDir, ".claude", "commands", "drop.md")
@@ -164,50 +164,75 @@ func planSetupActions(homeDir string, force bool) []setupAction {
 	return actions
 }
 
-func planClaudeHookAction(path string, force bool) setupAction {
-	const cladeCommand = "clade inject-context"
-	const legacyPacerCommand = "pacer inject-context"
+// planClaudeHookActions returns separate plan actions for each Claude hook type
+// (SessionStart, Stop, PreCompact) so each is visible in the setup preview.
+func planClaudeHookActions(path string, force bool) []setupAction {
+	type hookDef struct {
+		description string
+		command     string
+		legacy      string // legacy pacer command, if any
+	}
+
+	hooks := []hookDef{
+		{"SessionStart hook", "clade inject-context", "pacer inject-context"},
+		{"Stop hook (auto-dropbag)", "command -v clade >/dev/null 2>&1 && clade auto-dropbag || true", ""},
+		{"PreCompact hook (auto-dropbag)", "command -v clade >/dev/null 2>&1 && clade auto-dropbag || true", ""},
+		{"PreCompact hook (context-warning)", "clade context-warning", ""},
+	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return setupAction{
-				description: "Add SessionStart hook",
-				filePath:    path,
-				actionType:  "create",
-				apply:       func() error { _, err := mergeClaudeSettingsHooks(path, force); return err },
+			// File doesn't exist — all hooks need creating. First action creates the
+			// file and writes all hooks; the rest are no-ops (mergeClaudeSettingsHooks
+			// is idempotent).
+			var actions []setupAction
+			for _, h := range hooks {
+				actions = append(actions, setupAction{
+					description: "Add " + h.description,
+					filePath:    path,
+					actionType:  "create",
+					apply:       func() error { _, err := mergeClaudeSettingsHooks(path, force); return err },
+				})
 			}
+			return actions
 		}
-		return setupAction{
+		return []setupAction{{
 			description: "Claude settings",
 			filePath:    path,
 			actionType:  "error",
 			errorMsg:    err.Error(),
-		}
+		}}
 	}
 
 	content := string(data)
-	if strings.Contains(content, cladeCommand) && !force {
-		return setupAction{
-			description: "SessionStart hook",
-			filePath:    path,
-			actionType:  "skip",
+	var actions []setupAction
+
+	for _, h := range hooks {
+		if strings.Contains(content, h.command) && !force {
+			actions = append(actions, setupAction{
+				description: h.description,
+				filePath:    path,
+				actionType:  "skip",
+			})
+		} else if h.legacy != "" && strings.Contains(content, h.legacy) {
+			actions = append(actions, setupAction{
+				description: "Migrate pacer → clade: " + h.description,
+				filePath:    path,
+				actionType:  "migrate",
+				apply:       func() error { _, err := mergeClaudeSettingsHooks(path, force); return err },
+			})
+		} else {
+			actions = append(actions, setupAction{
+				description: "Add " + h.description,
+				filePath:    path,
+				actionType:  "add",
+				apply:       func() error { _, err := mergeClaudeSettingsHooks(path, force); return err },
+			})
 		}
 	}
-	if strings.Contains(content, legacyPacerCommand) {
-		return setupAction{
-			description: "Migrate pacer → clade hook",
-			filePath:    path,
-			actionType:  "migrate",
-			apply:       func() error { _, err := mergeClaudeSettingsHooks(path, force); return err },
-		}
-	}
-	return setupAction{
-		description: "Add SessionStart hook",
-		filePath:    path,
-		actionType:  "add",
-		apply:       func() error { _, err := mergeClaudeSettingsHooks(path, force); return err },
-	}
+
+	return actions
 }
 
 func planCursorHookAction(path string, force bool) setupAction {
@@ -343,37 +368,32 @@ func mergeClaudeSettingsHooks(path string, force bool) (bool, error) {
 	}
 
 	// Check if clade hook already present
+	sessionStartNeedsUpdate := true
 	for i, entry := range sessionStart {
 		for j, h := range entry.Hooks {
 			if h.Command == cladeCommand {
-				if !force {
-					return false, nil // Already configured
-				}
-				// Force: continue to ensure it's there (it is)
-				_ = i
-				_ = j
-				return false, nil
+				sessionStartNeedsUpdate = false
 			}
 			if h.Command == legacyPacerCommand {
 				// Migration: replace pacer with clade
 				sessionStart[i].Hooks[j].Command = cladeCommand
-				goto write
+				sessionStartNeedsUpdate = false
 			}
 		}
 	}
 
-	// Not found — add it
-	sessionStart = append(sessionStart, hookEntry{
-		Matcher: "*",
-		Hooks: []struct {
-			Type    string `json:"type"`
-			Command string `json:"command"`
-		}{
-			{Type: "command", Command: cladeCommand},
-		},
-	})
+	if sessionStartNeedsUpdate {
+		sessionStart = append(sessionStart, hookEntry{
+			Matcher: "*",
+			Hooks: []struct {
+				Type    string `json:"type"`
+				Command string `json:"command"`
+			}{
+				{Type: "command", Command: cladeCommand},
+			},
+		})
+	}
 
-write:
 	// Marshal back SessionStart
 	sessionStartJSON, err := json.Marshal(sessionStart)
 	if err != nil {
@@ -381,112 +401,14 @@ write:
 	}
 	hooksObj["SessionStart"] = sessionStartJSON
 
-	// Handle Stop hook (async auto-dropbag)
-	type asyncHook struct {
-		Type    string `json:"type"`
-		Command string `json:"command"`
-		Async   bool   `json:"async"`
-		Timeout int    `json:"timeout"`
-	}
-	type asyncHookEntry struct {
-		Matcher string      `json:"matcher,omitempty"`
-		Hooks   []asyncHook `json:"hooks,omitempty"`
-	}
+	// Stop hook (auto-dropbag) — parses session transcript for meaningful context
+	const stopCommand = "command -v clade >/dev/null 2>&1 && clade auto-dropbag || true"
+	mergeHookArray(hooksObj, "Stop", stopCommand)
 
-	var stopHooks []asyncHookEntry
-	if raw, ok := hooksObj["Stop"]; ok {
-		if err := json.Unmarshal(raw, &stopHooks); err == nil {
-			// Check if clade auto-dropbag already present
-			stopNeedsUpdate := true
-			for _, entry := range stopHooks {
-				for _, h := range entry.Hooks {
-					if h.Command == "clade auto-dropbag" {
-						stopNeedsUpdate = false
-						break
-					}
-				}
-			}
-
-			if stopNeedsUpdate {
-				// Add to existing Stop hooks
-				stopHooks = append(stopHooks, asyncHookEntry{
-					Matcher: "*",
-					Hooks: []asyncHook{
-						{
-							Type:    "command",
-							Command: "clade auto-dropbag",
-							Async:   true,
-							Timeout: 30,
-						},
-					},
-				})
-			}
-		}
-	} else {
-		// No Stop hooks yet - create from scratch
-		stopHooks = []asyncHookEntry{
-			{
-				Matcher: "*",
-				Hooks: []asyncHook{
-					{
-						Type:    "command",
-						Command: "clade auto-dropbag",
-						Async:   true,
-						Timeout: 30,
-					},
-				},
-			},
-		}
-	}
-
-	stopHooksJSON, _ := json.Marshal(stopHooks)
-	hooksObj["Stop"] = stopHooksJSON
-
-	// Handle PreCompact hook (context warning)
-	var preCompactHooks []hookEntry
-	if raw, ok := hooksObj["PreCompact"]; ok {
-		if err := json.Unmarshal(raw, &preCompactHooks); err == nil {
-			// Check if clade context-warning already present
-			preCompactNeedsUpdate := true
-			for _, entry := range preCompactHooks {
-				for _, h := range entry.Hooks {
-					if h.Command == "clade context-warning" {
-						preCompactNeedsUpdate = false
-						break
-					}
-				}
-			}
-
-			if preCompactNeedsUpdate {
-				// Add to existing PreCompact hooks
-				preCompactHooks = append(preCompactHooks, hookEntry{
-					Matcher: "*",
-					Hooks: []struct {
-						Type    string `json:"type"`
-						Command string `json:"command"`
-					}{
-						{Type: "command", Command: "clade context-warning"},
-					},
-				})
-			}
-		}
-	} else {
-		// No PreCompact hooks yet - create from scratch
-		preCompactHooks = []hookEntry{
-			{
-				Matcher: "*",
-				Hooks: []struct {
-					Type    string `json:"type"`
-					Command string `json:"command"`
-				}{
-					{Type: "command", Command: "clade context-warning"},
-				},
-			},
-		}
-	}
-
-	preCompactJSON, _ := json.Marshal(preCompactHooks)
-	hooksObj["PreCompact"] = preCompactJSON
+	// PreCompact hooks: auto-dropbag + context-warning
+	const preCompactDropbag = "command -v clade >/dev/null 2>&1 && clade auto-dropbag || true"
+	mergeHookArray(hooksObj, "PreCompact", preCompactDropbag)
+	mergeHookArray(hooksObj, "PreCompact", "clade context-warning")
 
 	hooksJSON, err := json.Marshal(hooksObj)
 	if err != nil {
@@ -508,6 +430,48 @@ write:
 		return false, err
 	}
 	return true, nil
+}
+
+// mergeHookArray ensures a command is present in a hook type's array.
+// Used for SessionStart, Stop, and PreCompact hooks.
+func mergeHookArray(hooksObj map[string]json.RawMessage, hookType, command string) {
+	type hookEntry struct {
+		Matcher string `json:"matcher,omitempty"`
+		Hooks   []struct {
+			Type    string `json:"type"`
+			Command string `json:"command"`
+		} `json:"hooks,omitempty"`
+	}
+
+	var hooks []hookEntry
+	if raw, ok := hooksObj[hookType]; ok {
+		if err := json.Unmarshal(raw, &hooks); err != nil {
+			hooks = nil
+		}
+	}
+
+	// Check if command already present
+	for _, entry := range hooks {
+		for _, h := range entry.Hooks {
+			if h.Command == command {
+				return // Already configured
+			}
+		}
+	}
+
+	// Add the command
+	hooks = append(hooks, hookEntry{
+		Matcher: "*",
+		Hooks: []struct {
+			Type    string `json:"type"`
+			Command string `json:"command"`
+		}{
+			{Type: "command", Command: command},
+		},
+	})
+
+	hooksJSON, _ := json.Marshal(hooks)
+	hooksObj[hookType] = hooksJSON
 }
 
 // mergeCursorHooksJSON safely merges the clade sessionStart hook into
@@ -582,6 +546,25 @@ write:
 		return false, err
 	}
 	hooksObj["sessionStart"] = sessionStartJSON
+
+	// Add stop hook for auto-dropbag (Cursor uses camelCase: "stop")
+	const stopCommand = "command -v clade >/dev/null 2>&1 && clade auto-dropbag || true"
+	var stopHooks []cursorHookEntry
+	if raw, ok := hooksObj["stop"]; ok {
+		_ = json.Unmarshal(raw, &stopHooks)
+	}
+	stopExists := false
+	for _, entry := range stopHooks {
+		if entry.Command == stopCommand {
+			stopExists = true
+			break
+		}
+	}
+	if !stopExists {
+		stopHooks = append(stopHooks, cursorHookEntry{Command: stopCommand})
+		stopJSON, _ := json.Marshal(stopHooks)
+		hooksObj["stop"] = stopJSON
+	}
 
 	hooksJSON, err := json.Marshal(hooksObj)
 	if err != nil {

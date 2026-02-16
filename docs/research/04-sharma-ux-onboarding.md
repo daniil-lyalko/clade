@@ -25,7 +25,7 @@ clade foo                                 # 2. First run - wizard fires
 
 1. User installs clade via Homebrew. Smooth.
 
-2. User runs `clade foo` from their home directory (as the README suggests). The first-run wizard fires (lines 169-218 of `/Users/dlyalko/daniil/pacer/internal/config/config.go`), asks a single question about their AI tool, saves config. Good.
+2. User runs `clade foo` from their home directory (as the README suggests). The first-run wizard fires (lines 169-218 of `/Users/dlyalko/daniil/clade/internal/config/config.go`), asks a single question about their AI tool, saves config. Good.
 
 3. Then `runWork` executes. It calls `resolveRepoWithPick`. There are no registered repos. The user is **not** in a git repo. They get:
    ```
