@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -487,10 +488,23 @@ func extractPRURL(logFile string) string {
 	return ""
 }
 
+// repoNamePattern matches strings that look like repository names:
+// short, no spaces, only alphanumeric chars plus hyphens and underscores.
+var repoNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
+
+// looksLikeRepoName returns true if s looks like a repository name rather than
+// free-form text (e.g. evidence or descriptions). Repo names are short, contain
+// no spaces, and consist of alphanumeric characters, hyphens, and underscores.
+func looksLikeRepoName(s string) bool {
+	s = strings.TrimSpace(s)
+	return len(s) > 0 && len(s) < 30 && repoNamePattern.MatchString(s)
+}
+
 // ParseTicketsFromCSV reads ticket IDs from a CSV file
 // Supports:
 //   - One ID per line (no header)
 //   - Header row with "ticket"/"id"/"key" column and optional "repo" column
+//   - Multi-repo values both quoted ("repo-a,repo-b") and unquoted (repo-a,repo-b)
 func ParseTicketsFromCSV(path string) ([]TicketInput, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -546,11 +560,23 @@ func ParseTicketsFromCSV(path string) ([]TicketInput, error) {
 		if reposCol >= 0 && reposCol < len(row) {
 			reposStr := strings.TrimSpace(row[reposCol])
 			if reposStr != "" {
+				// Handle quoted multi-repo values (e.g. "repo-a,repo-b" parsed as one field)
 				for _, r := range strings.Split(reposStr, ",") {
 					r = strings.TrimSpace(r)
 					if r != "" {
 						input.Repos = append(input.Repos, r)
 					}
+				}
+			}
+			// Handle unquoted multi-repo values: the CSV reader splits
+			// "TICKET,repo-a,repo-b,some evidence" into separate columns.
+			// Consume subsequent columns that look like repo names.
+			for i := reposCol + 1; i < len(row); i++ {
+				val := strings.TrimSpace(row[i])
+				if looksLikeRepoName(val) {
+					input.Repos = append(input.Repos, val)
+				} else {
+					break
 				}
 			}
 		}
