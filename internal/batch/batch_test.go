@@ -251,6 +251,130 @@ func TestParseTicketsFromCSV_AlternateHeaders(t *testing.T) {
 	}
 }
 
+func TestParseTicketsFromCSV_QuotedMultiRepo(t *testing.T) {
+	tmpDir := t.TempDir()
+	csvPath := filepath.Join(tmpDir, "tickets.csv")
+
+	content := `ticket,repos,evidence
+TICKET-1,"repo-a,repo-b",some evidence text here
+`
+	require.NoError(t, os.WriteFile(csvPath, []byte(content), 0644))
+
+	tickets, err := ParseTicketsFromCSV(csvPath)
+	require.NoError(t, err)
+
+	assert.Len(t, tickets, 1)
+	assert.Equal(t, "TICKET-1", tickets[0].ID)
+	assert.Equal(t, []string{"repo-a", "repo-b"}, tickets[0].Repos)
+}
+
+func TestParseTicketsFromCSV_UnquotedMultiRepo(t *testing.T) {
+	tmpDir := t.TempDir()
+	csvPath := filepath.Join(tmpDir, "tickets.csv")
+
+	content := `ticket,repos
+TICKET-1,repo-a,repo-b,some evidence text here
+`
+	require.NoError(t, os.WriteFile(csvPath, []byte(content), 0644))
+
+	tickets, err := ParseTicketsFromCSV(csvPath)
+	require.NoError(t, err)
+
+	assert.Len(t, tickets, 1)
+	assert.Equal(t, "TICKET-1", tickets[0].ID)
+	assert.Equal(t, []string{"repo-a", "repo-b"}, tickets[0].Repos)
+}
+
+func TestParseTicketsFromCSV_SingleRepo(t *testing.T) {
+	tmpDir := t.TempDir()
+	csvPath := filepath.Join(tmpDir, "tickets.csv")
+
+	content := `ticket,repos
+TICKET-1,repo-a,some evidence text here
+`
+	require.NoError(t, os.WriteFile(csvPath, []byte(content), 0644))
+
+	tickets, err := ParseTicketsFromCSV(csvPath)
+	require.NoError(t, err)
+
+	assert.Len(t, tickets, 1)
+	assert.Equal(t, "TICKET-1", tickets[0].ID)
+	assert.Equal(t, []string{"repo-a"}, tickets[0].Repos)
+}
+
+func TestParseTicketsFromCSV_SingleRepoNoEvidence(t *testing.T) {
+	tmpDir := t.TempDir()
+	csvPath := filepath.Join(tmpDir, "tickets.csv")
+
+	content := `ticket,repos
+TICKET-1,repo-a
+`
+	require.NoError(t, os.WriteFile(csvPath, []byte(content), 0644))
+
+	tickets, err := ParseTicketsFromCSV(csvPath)
+	require.NoError(t, err)
+
+	assert.Len(t, tickets, 1)
+	assert.Equal(t, "TICKET-1", tickets[0].ID)
+	assert.Equal(t, []string{"repo-a"}, tickets[0].Repos)
+}
+
+func TestParseTicketsFromCSV_ThreeReposUnquoted(t *testing.T) {
+	tmpDir := t.TempDir()
+	csvPath := filepath.Join(tmpDir, "tickets.csv")
+
+	content := `ticket,repos
+TICKET-1,repo-a,repo-b,repo-c,some evidence text here
+`
+	require.NoError(t, os.WriteFile(csvPath, []byte(content), 0644))
+
+	tickets, err := ParseTicketsFromCSV(csvPath)
+	require.NoError(t, err)
+
+	assert.Len(t, tickets, 1)
+	assert.Equal(t, "TICKET-1", tickets[0].ID)
+	assert.Equal(t, []string{"repo-a", "repo-b", "repo-c"}, tickets[0].Repos)
+}
+
+func TestParseTicketsFromCSV_RealWorldUnquoted(t *testing.T) {
+	// Simulates the real-world case from the bug report
+	tmpDir := t.TempDir()
+	csvPath := filepath.Join(tmpDir, "tickets.csv")
+
+	content := `ticket,repos
+SALESPRO-6493,leap-360,leap_one_server,E2E smoke test: Corp Admin Copy Price Guide
+SALESPRO-7000,salespro-ios,Fix login button
+`
+	require.NoError(t, os.WriteFile(csvPath, []byte(content), 0644))
+
+	tickets, err := ParseTicketsFromCSV(csvPath)
+	require.NoError(t, err)
+
+	assert.Len(t, tickets, 2)
+
+	assert.Equal(t, "SALESPRO-6493", tickets[0].ID)
+	assert.Equal(t, []string{"leap-360", "leap_one_server"}, tickets[0].Repos)
+
+	assert.Equal(t, "SALESPRO-7000", tickets[1].ID)
+	assert.Equal(t, []string{"salespro-ios"}, tickets[1].Repos)
+}
+
+func TestLooksLikeRepoName(t *testing.T) {
+	// Should match repo names
+	assert.True(t, looksLikeRepoName("leap-360"))
+	assert.True(t, looksLikeRepoName("leap_one_server"))
+	assert.True(t, looksLikeRepoName("salespro-ios"))
+	assert.True(t, looksLikeRepoName("repo-a"))
+	assert.True(t, looksLikeRepoName("doc-editor-two"))
+
+	// Should NOT match evidence text
+	assert.False(t, looksLikeRepoName("some evidence text here"))
+	assert.False(t, looksLikeRepoName("E2E smoke test: Corp Admin Copy Price Guide"))
+	assert.False(t, looksLikeRepoName("Fix login button"))
+	assert.False(t, looksLikeRepoName(""))
+	assert.False(t, looksLikeRepoName("   "))
+}
+
 func TestParseTicketsFromCSV_Empty(t *testing.T) {
 	tmpDir := t.TempDir()
 	csvPath := filepath.Join(tmpDir, "tickets.csv")
