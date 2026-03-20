@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/daniil-lyalko/pacer/internal/config"
-	"github.com/daniil-lyalko/pacer/internal/git"
-	"github.com/daniil-lyalko/pacer/internal/hooks"
-	"github.com/daniil-lyalko/pacer/internal/ui"
+	"github.com/daniil-lyalko/clade/internal/config"
+	"github.com/daniil-lyalko/clade/internal/git"
+	"github.com/daniil-lyalko/clade/internal/hooks"
+	"github.com/daniil-lyalko/clade/internal/ui"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
@@ -26,11 +26,11 @@ var cleanupCmd = &cobra.Command{
 	Long: `Remove a worktree, project, or scratch folder and optionally delete the branch.
 
 Examples:
-  pacer cleanup LEAP-1234             # Clean up worktree
-  pacer cleanup my-project            # Clean up project
-  pacer cleanup my-scratch            # Clean up scratch folder
-  pacer cleanup LEAP-1234 --force     # Skip confirmations
-  pacer cleanup LEAP-1234 --dry-run   # Preview what would be deleted`,
+  clade cleanup LEAP-1234             # Clean up worktree
+  clade cleanup my-project            # Clean up project
+  clade cleanup my-scratch            # Clean up scratch folder
+  clade cleanup LEAP-1234 --force     # Skip confirmations
+  clade cleanup LEAP-1234 --dry-run   # Preview what would be deleted`,
 	Args:              cobra.MaximumNArgs(1),
 	RunE:              runCleanup,
 	ValidArgsFunction: completeCleanupNames,
@@ -159,7 +159,7 @@ func cleanupWorktree(cfg *config.Config, state *config.State, repoName string, w
 		ui.Detail("  Branch: %s", wt.Branch)
 		ui.Detail("  Label: %s", wt.Label)
 		// Check for dropbags
-		dropbagsDir := filepath.Join(wtPath, ".pacer", "dropbags")
+		dropbagsDir := filepath.Join(wtPath, ".clade", "dropbags")
 		if entries, err := os.ReadDir(dropbagsDir); err == nil {
 			dropbagCount := 0
 			for _, e := range entries {
@@ -168,7 +168,7 @@ func cleanupWorktree(cfg *config.Config, state *config.State, repoName string, w
 				}
 			}
 			if dropbagCount > 0 {
-				ui.Detail("  Would archive %d dropbag(s) to ~/.config/pacer/archive/", dropbagCount)
+				ui.Detail("  Would archive %d dropbag(s) to ~/.config/clade/archive/", dropbagCount)
 			}
 		}
 		ui.Detail("  Would prompt for branch deletion")
@@ -292,18 +292,18 @@ func cleanupWorktree(cfg *config.Config, state *config.State, repoName string, w
 }
 
 func cleanupExperiment(cfg *config.Config, state *config.State, key string, exp *config.Experiment) error {
-	ui.Header("Experiment (legacy): %s", exp.Name)
+	ui.Header("Worktree (legacy): %s", exp.Name)
 	ui.KeyValue("Path", exp.Path)
 	ui.KeyValue("Branch", exp.Branch)
 	fmt.Println()
 
 	// Dry-run mode
 	if cleanupDryRunFlag {
-		ui.Info("[DRY RUN] Would clean up experiment: %s", exp.Name)
+		ui.Info("[DRY RUN] Would clean up worktree: %s", exp.Name)
 		ui.Detail("  Path: %s", exp.Path)
 		ui.Detail("  Branch: %s", exp.Branch)
 		// Check for dropbags
-		dropbagsDir := filepath.Join(exp.Path, ".pacer", "dropbags")
+		dropbagsDir := filepath.Join(exp.Path, ".clade", "dropbags")
 		if entries, err := os.ReadDir(dropbagsDir); err == nil {
 			dropbagCount := 0
 			for _, e := range entries {
@@ -312,7 +312,7 @@ func cleanupExperiment(cfg *config.Config, state *config.State, key string, exp 
 				}
 			}
 			if dropbagCount > 0 {
-				ui.Detail("  Would archive %d dropbag(s) to ~/.config/pacer/archive/", dropbagCount)
+				ui.Detail("  Would archive %d dropbag(s) to ~/.config/clade/archive/", dropbagCount)
 			}
 		}
 		ui.Detail("  Would prompt for branch deletion")
@@ -403,7 +403,7 @@ func cleanupExperiment(cfg *config.Config, state *config.State, key string, exp 
 		ui.Warn("Failed to save state: %v", err)
 	}
 
-	ui.Success("Cleaned up experiment '%s'", exp.Name)
+	ui.Success("Cleaned up worktree '%s'", exp.Name)
 	return nil
 }
 
@@ -604,9 +604,9 @@ func completeCleanupNames(cmd *cobra.Command, args []string, toComplete string) 
 
 // archiveDropbags copies dropbag files and metadata to the archive directory
 // before a worktree is removed. This preserves session history for future reference.
-// Archive location: ~/.config/pacer/archive/{repo}/{name}-{timestamp}/
+// Archive location: ~/.config/clade/archive/{repo}/{name}-{timestamp}/
 func archiveDropbags(wtPath, repoName, wtName string) (string, error) {
-	dropbagsDir := filepath.Join(wtPath, ".pacer", "dropbags")
+	dropbagsDir := filepath.Join(wtPath, ".clade", "dropbags")
 
 	// Check if dropbags directory exists
 	if _, err := os.Stat(dropbagsDir); os.IsNotExist(err) {
@@ -631,7 +631,7 @@ func archiveDropbags(wtPath, repoName, wtName string) (string, error) {
 		return "", nil // No dropbags to archive
 	}
 
-	// Create archive directory: ~/.config/pacer/archive/{repo}/{name}-{timestamp}/
+	// Create archive directory: ~/.config/clade/archive/{repo}/{name}-{timestamp}/
 	timestamp := time.Now().Format("20060102-1504")
 	archiveDir := filepath.Join(config.ArchiveDir(), repoName, fmt.Sprintf("%s-%s", wtName, timestamp))
 
@@ -649,8 +649,8 @@ func archiveDropbags(wtPath, repoName, wtName string) (string, error) {
 	}
 
 	// Copy metadata.json if it exists (try new path first, then legacy)
-	newMetadataPath := filepath.Join(wtPath, ".pacer", "metadata.json")
-	oldMetadataPath := filepath.Join(wtPath, ".pacer.json")
+	newMetadataPath := filepath.Join(wtPath, ".clade", "metadata.json")
+	oldMetadataPath := filepath.Join(wtPath, ".clade.json")
 	var metadataSrc string
 	if _, err := os.Stat(newMetadataPath); err == nil {
 		metadataSrc = newMetadataPath

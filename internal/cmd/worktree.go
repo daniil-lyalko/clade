@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/daniil-lyalko/pacer/internal/agent"
-	"github.com/daniil-lyalko/pacer/internal/config"
-	"github.com/daniil-lyalko/pacer/internal/files"
-	"github.com/daniil-lyalko/pacer/internal/git"
-	"github.com/daniil-lyalko/pacer/internal/hooks"
-	"github.com/daniil-lyalko/pacer/internal/ui"
-	"github.com/daniil-lyalko/pacer/internal/util"
+	"github.com/daniil-lyalko/clade/internal/agent"
+	"github.com/daniil-lyalko/clade/internal/config"
+	"github.com/daniil-lyalko/clade/internal/files"
+	"github.com/daniil-lyalko/clade/internal/git"
+	"github.com/daniil-lyalko/clade/internal/hooks"
+	"github.com/daniil-lyalko/clade/internal/ui"
+	"github.com/daniil-lyalko/clade/internal/util"
 	"github.com/manifoldco/promptui"
 )
 
@@ -67,22 +67,10 @@ func CreateWorktree(name string, wtCfg WorktreeConfig, opts WorktreeOptions) err
 		branch = opts.BranchFlag
 	} else {
 		// Build default branch name - with or without prefix
-		var defaultBranch string
 		if wtCfg.BranchPrefix != "" {
-			defaultBranch = wtCfg.BranchPrefix + "/" + name
+			branch = wtCfg.BranchPrefix + "/" + name
 		} else {
-			defaultBranch = name
-		}
-		prompt := promptui.Prompt{
-			Label:   "Branch name",
-			Default: defaultBranch,
-		}
-		branch, err = prompt.Run()
-		if err != nil {
-			return err
-		}
-		if branch == "" {
-			branch = defaultBranch
+			branch = name
 		}
 	}
 
@@ -126,7 +114,7 @@ func CreateWorktree(name string, wtCfg WorktreeConfig, opts WorktreeOptions) err
 		return nil
 	}
 
-	// v2 path: ~/pacer/repos/{repoName}/{name}/
+	// v2 path: ~/clade/repos/{repoName}/{name}/
 	wtPath := config.WorktreePath(cfg, repoName, name)
 
 	// Dry-run mode: show what would be created and exit
@@ -151,7 +139,7 @@ func CreateWorktree(name string, wtCfg WorktreeConfig, opts WorktreeOptions) err
 	branchInfo := git.CheckBranch(repoPath, branch)
 	if branchInfo.Status != git.BranchNotFound {
 		ui.Error("Branch '%s' already exists", branch)
-		ui.Detail("Use: pacer resume %s", name)
+		ui.Detail("Use: clade resume %s", name)
 		ui.Detail("Or pick a different name")
 		return fmt.Errorf("branch already exists")
 	}
@@ -164,31 +152,6 @@ func CreateWorktree(name string, wtCfg WorktreeConfig, opts WorktreeOptions) err
 	}
 	ui.Detail("Based on: %s", baseBranch)
 
-	// Copy .claude/ directory if it exists in source repo
-	sourceClaudeDir := filepath.Join(repoPath, ".claude")
-	if _, err := os.Stat(sourceClaudeDir); err == nil {
-		ui.Info("Copying .claude/ configuration...")
-		if err := util.CopyDir(sourceClaudeDir, filepath.Join(wtPath, ".claude")); err != nil {
-			ui.Warn("Failed to copy .claude/ directory: %v", err)
-		}
-	}
-
-	// Copy .cursor/ directory if it exists in source repo
-	sourceCursorDir := filepath.Join(repoPath, ".cursor")
-	if _, err := os.Stat(sourceCursorDir); err == nil {
-		ui.Info("Copying .cursor/ configuration...")
-		if err := util.CopyDir(sourceCursorDir, filepath.Join(wtPath, ".cursor")); err != nil {
-			ui.Warn("Failed to copy .cursor/ directory: %v", err)
-		}
-	}
-
-	// Ensure required config files exist (.claude/ and .cursor/)
-	if cfg.AutoInit {
-		if err := EnsureAgentConfig(wtPath); err != nil {
-			ui.Warn("Failed to ensure agent config: %v", err)
-		}
-	}
-
 	// Copy gitignored files (.env, .npmrc, etc.)
 	if copyGitignoredFilesImpl != nil {
 		if err := copyGitignoredFilesImpl(cfg, repoPath, wtPath); err != nil {
@@ -196,9 +159,9 @@ func CreateWorktree(name string, wtCfg WorktreeConfig, opts WorktreeOptions) err
 		}
 	}
 
-	// Create .pacer/metadata.json
+	// Create .clade/metadata.json
 	ticket := util.ExtractTicket(name)
-	pacerMetadata := map[string]interface{}{
+	cladeMetadata := map[string]interface{}{
 		"type":    wtCfg.Label,
 		"name":    name,
 		"ticket":  ticket,
@@ -206,11 +169,11 @@ func CreateWorktree(name string, wtCfg WorktreeConfig, opts WorktreeOptions) err
 		"branch":  branch,
 		"created": time.Now().Format(time.RFC3339),
 	}
-	metadataPath := filepath.Join(wtPath, ".pacer", "metadata.json")
+	metadataPath := filepath.Join(wtPath, ".clade", "metadata.json")
 	if err := os.MkdirAll(filepath.Dir(metadataPath), 0755); err != nil {
-		ui.Warn("Failed to create .pacer directory: %v", err)
+		ui.Warn("Failed to create .clade directory: %v", err)
 	}
-	if err := util.WriteJSON(metadataPath, pacerMetadata); err != nil {
+	if err := util.WriteJSON(metadataPath, cladeMetadata); err != nil {
 		ui.Warn("Failed to write metadata.json: %v", err)
 	}
 
@@ -305,13 +268,8 @@ func ResumeWorktree(cfg *config.Config, state *config.State, repoName string, wt
 	if _, err := os.Stat(wtPath); os.IsNotExist(err) {
 		ui.Error("Path no longer exists: %s", wtPath)
 		ui.Detail("The worktree may have been removed manually")
-		ui.Detail("Run: pacer cleanup %s", wt.Name)
+		ui.Detail("Run: clade cleanup %s", wt.Name)
 		return fmt.Errorf("worktree not found")
-	}
-
-	// Ensure agent config files exist (auto-upgrade existing worktrees with new features)
-	if err := EnsureAgentConfig(wtPath); err != nil {
-		ui.Warn("Failed to ensure agent config: %v", err)
 	}
 
 	// Check for divergence if remote exists
@@ -432,7 +390,7 @@ func printDryRun(cfg *config.Config, repoPath, repoName, name, branch, wtPath st
 	fmt.Println(ui.Dim("Would run:"))
 	fmt.Printf("  git worktree add %s -b %s\n", wtPath, branch)
 	if cfg.AutoInit {
-		fmt.Println("  pacer init (auto_init enabled)")
+		fmt.Println("  clade init (auto_init enabled)")
 	}
 
 	// Show agent/editor that would launch

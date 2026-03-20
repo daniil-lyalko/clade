@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/daniil-lyalko/pacer/internal/cmd"
+	"github.com/daniil-lyalko/clade/internal/cmd"
 )
 
 func main() {

@@ -1,4 +1,4 @@
-# Pacer Repository Review
+# Clade Repository Review
 
 Independent review by a senior developer with no prior context on the project.
 
@@ -8,9 +8,9 @@ Independent review by a senior developer with no prior context on the project.
 
 ### README Clarity: B-
 
-The README opens well: *"A CLI that manages git worktrees and context for AI coding sessions."* I understood the concept within 15 seconds. The three-bullet "Why Pacer?" section is effective.
+The README opens well: *"A CLI that manages git worktrees and context for AI coding sessions."* I understood the concept within 15 seconds. The three-bullet "Why Clade?" section is effective.
 
-However, the README undersells the product. The Quick Start section jumps straight into commands without establishing *what happens* when you run them. A new reader sees `pacer foo` and thinks "why wouldn't I just use `git worktree add`?" The context injection story -- the actual differentiator -- is buried under "How It Works" halfway down the page. Leading with the hook-based session continuity would be stronger.
+However, the README undersells the product. The Quick Start section jumps straight into commands without establishing *what happens* when you run them. A new reader sees `clade foo` and thinks "why wouldn't I just use `git worktree add`?" The context injection story -- the actual differentiator -- is buried under "How It Works" halfway down the page. Leading with the hook-based session continuity would be stronger.
 
 ### Installation Friction: A-
 
@@ -18,9 +18,9 @@ Two options: `go install` one-liner or `git clone && make install`. Standard Go 
 
 ### Value Proposition: C+
 
-Here's the problem: the value proposition is split across two documents. The README gives a thin explanation. The real pitch lives in CLAUDE.md, which is a 900-line internal architecture document that *also* doubles as user documentation, design spec, and implementation roadmap. A potential user would need to read hundreds of lines of CLAUDE.md to understand what pacer actually does for them.
+Here's the problem: the value proposition is split across two documents. The README gives a thin explanation. The real pitch lives in CLAUDE.md, which is a 900-line internal architecture document that *also* doubles as user documentation, design spec, and implementation roadmap. A potential user would need to read hundreds of lines of CLAUDE.md to understand what clade actually does for them.
 
-The three problems pacer solves are legitimate, but only the third one (context loss across sessions) is genuinely novel. Worktree creation convenience alone doesn't justify a new tool.
+The three problems clade solves are legitimate, but only the third one (context loss across sessions) is genuinely novel. Worktree creation convenience alone doesn't justify a new tool.
 
 ---
 
@@ -88,7 +88,7 @@ One note: everything in `go.mod` is marked `// indirect`, which means the `requi
 
 ### Direct Competitors
 
-**git-worktree itself**: The raw `git worktree add/remove/list` commands do the core job. Pacer's convenience wrapper (`pacer foo` vs `git worktree add ~/pacer/repos/myrepo/foo -b foo`) is real but incremental.
+**git-worktree itself**: The raw `git worktree add/remove/list` commands do the core job. Clade's convenience wrapper (`clade foo` vs `git worktree add ~/clade/repos/myrepo/foo -b foo`) is real but incremental.
 
 **git-town, git-branchless**: Workflow tools that manage branches and worktrees with opinionated conventions. More mature, tested, and documented. However, they don't address AI context injection.
 
@@ -116,7 +116,7 @@ Everything else (worktree creation, branch naming conventions, project managemen
 
 1. **Requires Go toolchain to install.** No Homebrew tap, no prebuilt binaries, no curl-to-install script. The target audience (Claude Code / Cursor users) may not have Go installed. This is the biggest practical barrier.
 
-2. **Opinionated directory structure.** Everything goes in `~/pacer/`. Developers who already have worktree conventions or who use a different home directory layout are forced to adapt. The `base_dir` config exists but the directory hierarchy (`repos/{repo}/{name}/`) is rigid.
+2. **Opinionated directory structure.** Everything goes in `~/clade/`. Developers who already have worktree conventions or who use a different home directory layout are forced to adapt. The `base_dir` config exists but the directory hierarchy (`repos/{repo}/{name}/`) is rigid.
 
 3. **Trust concerns.** The default agent flags include `--dangerously-skip-permissions` (`config.go:192`). Setting this as a default for new users is aggressive. This should require explicit opt-in.
 
@@ -136,11 +136,11 @@ Everything else (worktree creation, branch naming conventions, project managemen
 
 ### Missing Features That Would Be Expected
 
-- **`pacer cd <name>`**: Quickly navigate to a worktree. `pacer open` exists but requires `cd $(pacer open foo)` which is awkward.
+- **`clade cd <name>`**: Quickly navigate to a worktree. `clade open` exists but requires `cd $(clade open foo)` which is awkward.
 - **Tab completion for worktree names**: The Makefile installs zsh completions but it's unclear if subcommand arguments (worktree names) are completed.
-- **Undo/rollback**: No way to recover from a failed `pacer cleanup` or interrupted worktree creation.
+- **Undo/rollback**: No way to recover from a failed `clade cleanup` or interrupted worktree creation.
 - **Dry-run mode for destructive operations**: `cleanup` should support `--dry-run`.
-- **`pacer config`**: No way to view or edit config without manually opening the JSON file.
+- **`clade config`**: No way to view or edit config without manually opening the JSON file.
 
 ---
 
@@ -150,7 +150,7 @@ Everything else (worktree creation, branch naming conventions, project managemen
 
 **Not in its current state.** I use Claude Code daily and the context injection problem is real. But I'd solve it with a 50-line shell script that writes a `.claude/settings.json` with a SessionStart hook pointing to a simple context gatherer. I don't need the worktree management, branch naming conventions, or project orchestration to get the core value.
 
-If pacer were packaged as a Homebrew formula with prebuilt binaries, had test coverage, and the context injection could be used *without* the worktree management (i.e., `pacer init` in any directory without requiring the full ~/pacer/ structure), I'd reconsider.
+If clade were packaged as a Homebrew formula with prebuilt binaries, had test coverage, and the context injection could be used *without* the worktree management (i.e., `clade init` in any directory without requiring the full ~/clade/ structure), I'd reconsider.
 
 ### Would I Recommend It to My Team?
 
@@ -171,7 +171,7 @@ The core idea (session context injection for AI coding tools) is sound and addre
 6. Write config and state files with `0600` permissions.
 
 **Should-do:**
-7. Decouple context injection from worktree management. Let `pacer init` work standalone in any repo.
+7. Decouple context injection from worktree management. Let `clade init` work standalone in any repo.
 8. Replace bubble sorts with `sort.Slice`.
 9. Delete or properly isolate deprecated code in `exp.go`.
 10. Split CLAUDE.md into architecture docs (for contributors) and user docs (for users).
@@ -179,6 +179,6 @@ The core idea (session context injection for AI coding tools) is sound and addre
 
 **Nice-to-have:**
 12. Homebrew formula.
-13. Shell function for `pacer cd` (prints path, user wraps in `cd`).
+13. Shell function for `clade cd` (prints path, user wraps in `cd`).
 14. Verbose/debug logging flag.
 15. Configuration validation on load.

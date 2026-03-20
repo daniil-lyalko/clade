@@ -1,5 +1,5 @@
-# Binary (root only, not cmd/pacer/)
-/pacer
+# Binary (root only, not cmd/clade/)
+/clade
 
 # Go
 *.exe
@@ -26,6 +26,6 @@ debug
 *.log
 ideas/
 
-# Pacer
-.pacer/
-.pacer.json
+# Clade
+.clade/
+.clade.json

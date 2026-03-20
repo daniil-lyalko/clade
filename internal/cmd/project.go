@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/daniil-lyalko/pacer/internal/agent"
-	"github.com/daniil-lyalko/pacer/internal/config"
-	"github.com/daniil-lyalko/pacer/internal/files"
-	"github.com/daniil-lyalko/pacer/internal/git"
-	"github.com/daniil-lyalko/pacer/internal/ui"
+	"github.com/daniil-lyalko/clade/internal/agent"
+	"github.com/daniil-lyalko/clade/internal/config"
+	"github.com/daniil-lyalko/clade/internal/files"
+	"github.com/daniil-lyalko/clade/internal/git"
+	"github.com/daniil-lyalko/clade/internal/ui"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
@@ -40,18 +40,18 @@ All repos in the project share the same branch name, making it easy to
 coordinate changes across repositories for a single feature.
 
 Examples:
-  pacer --experimental project                     # Interactive setup
-  pacer --experimental project api-integration     # Named project with interactive repo selection
+  clade --experimental project                     # Interactive setup
+  clade --experimental project api-integration     # Named project with interactive repo selection
 
 Creates:
-  ~/pacer/projects/{name}/
+  ~/clade/projects/{name}/
     ├── backend/      # Worktree from repo 1
     ├── frontend/     # Worktree from repo 2
     └── shared/       # Worktree from repo 3`,
 	Args: cobra.MaximumNArgs(1),
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		if !IsExperimentalEnabled() {
-			return fmt.Errorf("'project' is an experimental feature\n\nTo use it, run: pacer --experimental project [name]\n\nFor most use cases, consider creating separate worktrees with the same branch name instead")
+			return fmt.Errorf("'project' is an experimental feature\n\nTo use it, run: clade --experimental project [name]\n\nFor most use cases, consider creating separate worktrees with the same branch name instead")
 		}
 		return nil
 	},
@@ -66,9 +66,9 @@ var projectAddCmd = &cobra.Command{
 The new repo will use the same branch name as the existing project.
 
 Examples:
-  pacer project add                           # Interactive: pick project and repo
-  pacer project add api-integration           # Pick repo from registered repos
-  pacer project add api-integration backend   # Fully specified`,
+  clade project add                           # Interactive: pick project and repo
+  clade project add api-integration           # Pick repo from registered repos
+  clade project add api-integration backend   # Fully specified`,
 	Args: cobra.MaximumNArgs(2),
 	RunE: runProjectAdd,
 }
@@ -206,7 +206,7 @@ func runProject(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(repos) < 2 {
-		ui.Warn("Only one repo added. Consider using 'pacer <name>' for single-repo work.")
+		ui.Warn("Only one repo added. Consider using 'clade <name>' for single-repo work.")
 		prompt := promptui.Prompt{
 			Label:     "Continue anyway",
 			IsConfirm: true,
@@ -306,13 +306,6 @@ func runProject(cmd *cobra.Command, args []string) error {
 			return wtErr
 		}
 
-		// Auto-init .claude/ if configured
-		if cfg.AutoInit {
-			if err := InitRepo(worktreePath); err != nil {
-				ui.Warn("Failed to init %s: %v", repo.FolderName, err)
-			}
-		}
-
 		// Copy gitignored files (.env, .npmrc, etc.)
 		if err := copyGitignoredFilesForProject(cfg, repo.SourcePath, worktreePath); err != nil {
 			ui.Warn("Failed to copy some files for %s: %v", repo.FolderName, err)
@@ -326,7 +319,7 @@ func runProject(cmd *cobra.Command, args []string) error {
 		ui.Success("Created %s", repo.FolderName)
 	}
 
-	// Create .pacer-project.json
+	// Create .clade-project.json
 	projectMeta := map[string]interface{}{
 		"type":    "project",
 		"name":    projectName,
@@ -335,9 +328,9 @@ func runProject(cmd *cobra.Command, args []string) error {
 		"created": time.Now().Format(time.RFC3339),
 	}
 
-	metaPath := filepath.Join(projectPath, ".pacer-project.json")
+	metaPath := filepath.Join(projectPath, ".clade-project.json")
 	if err := writeProjectJSON(metaPath, projectMeta); err != nil {
-		ui.Warn("Failed to write .pacer-project.json: %v", err)
+		ui.Warn("Failed to write .clade-project.json: %v", err)
 	}
 
 	// Update state
@@ -510,7 +503,7 @@ func runProjectAdd(cmd *cobra.Command, args []string) error {
 
 	// Check if there are any projects
 	if len(state.Projects) == 0 {
-		return fmt.Errorf("no projects found. Create one first with: pacer project <name>")
+		return fmt.Errorf("no projects found. Create one first with: clade project <name>")
 	}
 
 	// Get project name
@@ -533,7 +526,7 @@ func runProjectAdd(cmd *cobra.Command, args []string) error {
 
 	// Check if there are registered repos
 	if len(cfg.Repos) == 0 {
-		return fmt.Errorf("no registered repos. Add some with: pacer repo add <path>")
+		return fmt.Errorf("no registered repos. Add some with: clade repo add <path>")
 	}
 
 	// Get repo to add
@@ -625,13 +618,6 @@ func runProjectAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create worktree: %w", wtErr)
 	}
 
-	// Auto-init .claude/ if configured
-	if cfg.AutoInit {
-		if err := InitRepo(worktreePath); err != nil {
-			ui.Warn("Failed to init: %v", err)
-		}
-	}
-
 	// Copy gitignored files
 	if err := copyGitignoredFilesForProject(cfg, repoPath, worktreePath); err != nil {
 		ui.Warn("Failed to copy some files: %v", err)
@@ -649,7 +635,7 @@ func runProjectAdd(cmd *cobra.Command, args []string) error {
 		ui.Warn("Failed to save state: %v", err)
 	}
 
-	// Update .pacer-project.json
+	// Update .clade-project.json
 	projectMeta := map[string]interface{}{
 		"type":    "project",
 		"name":    project.Name,
@@ -658,9 +644,9 @@ func runProjectAdd(cmd *cobra.Command, args []string) error {
 		"created": project.Created.Format(time.RFC3339),
 	}
 
-	metaPath := filepath.Join(project.Path, ".pacer-project.json")
+	metaPath := filepath.Join(project.Path, ".clade-project.json")
 	if err := writeProjectJSON(metaPath, projectMeta); err != nil {
-		ui.Warn("Failed to update .pacer-project.json: %v", err)
+		ui.Warn("Failed to update .clade-project.json: %v", err)
 	}
 
 	ui.Success("Added %s to project!", folderName)

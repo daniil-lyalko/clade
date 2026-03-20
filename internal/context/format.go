@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/daniil-lyalko/pacer/internal/git"
+	"github.com/daniil-lyalko/clade/internal/git"
 )
 
-// PacerMetadata represents the .pacer.json file
-type PacerMetadata struct {
+// CladeMetadata represents the .clade.json file
+type CladeMetadata struct {
 	Type    string `json:"type"`
 	Name    string `json:"name"`
 	Ticket  string `json:"ticket,omitempty"`
@@ -22,14 +22,15 @@ type PacerMetadata struct {
 
 // ContextOutput holds all the context to be injected
 type ContextOutput struct {
-	Dropbag    *DropbagInfo
-	GitStatus  *git.Status
-	Commits    []string
-	Todos      []TodoItem
-	Metadata   *PacerMetadata
-	RepoName   string
-	BranchName string
-	Dir        string // Directory where context was gathered (for path resolution)
+	Dropbag     *DropbagInfo
+	AutoDropbag *DropbagInfo // Auto-generated from session transcript
+	GitStatus   *git.Status
+	Commits     []string
+	Todos       []TodoItem
+	Metadata    *CladeMetadata
+	RepoName    string
+	BranchName  string
+	Dir         string // Directory where context was gathered (for path resolution)
 }
 
 // GatherContext collects all context information for a directory
@@ -44,9 +45,14 @@ func GatherContext(dir string) (*ContextOutput, error) {
 		ctx.BranchName = branch
 	}
 
-	// Read DROPBAG.md
+	// Read DROPBAG.md (manual /drop)
 	if dropbag, err := ReadDropbag(dir); err == nil {
 		ctx.Dropbag = dropbag
+	}
+
+	// Read DROPBAG-auto.md (auto-generated from transcript)
+	if autoDropbag, err := ReadAutoDropbag(dir); err == nil {
+		ctx.AutoDropbag = autoDropbag
 	}
 
 	// Get git status
@@ -64,8 +70,8 @@ func GatherContext(dir string) (*ContextOutput, error) {
 		ctx.Todos = todos
 	}
 
-	// Read .pacer.json metadata
-	metadata, _ := ReadPacerMetadata(dir)
+	// Read .clade.json metadata
+	metadata, _ := ReadCladeMetadata(dir)
 	ctx.Metadata = metadata
 
 	return ctx, nil
@@ -77,7 +83,23 @@ func FormatContext(ctx *ContextOutput) string {
 
 	sb.WriteString("# Session Context\n\n")
 
-	// DROPBAG.md section
+	// Auto-DROPBAG section (from previous session transcript, most recent context)
+	if ctx.AutoDropbag != nil && ctx.AutoDropbag.Exists {
+		header := fmt.Sprintf("## Session Context (from %s)", ctx.AutoDropbag.RelativeAge)
+
+		age := time.Since(ctx.AutoDropbag.ModTime)
+		isStale := age > 48*time.Hour
+
+		if isStale {
+			header += " ⚠️  STALE"
+		}
+		sb.WriteString(header + "\n\n")
+
+		sb.WriteString(ctx.AutoDropbag.Content)
+		sb.WriteString("\n\n")
+	}
+
+	// Manual DROPBAG section (from /drop command)
 	if ctx.Dropbag != nil && ctx.Dropbag.Exists {
 		header := fmt.Sprintf("## DROPBAG (from %s)", ctx.Dropbag.RelativeAge)
 
@@ -166,16 +188,16 @@ func FormatContext(ctx *ContextOutput) string {
 	return sb.String()
 }
 
-// ReadPacerMetadata reads the metadata file from a directory.
-// Supports both new path (.pacer/metadata.json) and legacy path (.pacer.json).
+// ReadCladeMetadata reads the metadata file from a directory.
+// Supports both new path (.clade/metadata.json) and legacy path (.clade.json).
 // Auto-migrates from legacy to new path if found.
-func ReadPacerMetadata(dir string) (*PacerMetadata, error) {
-	newPath := filepath.Join(dir, ".pacer", "metadata.json")
-	oldPath := filepath.Join(dir, ".pacer.json")
+func ReadCladeMetadata(dir string) (*CladeMetadata, error) {
+	newPath := filepath.Join(dir, ".clade", "metadata.json")
+	oldPath := filepath.Join(dir, ".clade.json")
 
 	// Try new path first
 	if data, err := os.ReadFile(newPath); err == nil {
-		var metadata PacerMetadata
+		var metadata CladeMetadata
 		if err := json.Unmarshal(data, &metadata); err != nil {
 			return nil, err
 		}
@@ -188,14 +210,14 @@ func ReadPacerMetadata(dir string) (*PacerMetadata, error) {
 		return nil, err
 	}
 
-	var metadata PacerMetadata
+	var metadata CladeMetadata
 	if err := json.Unmarshal(data, &metadata); err != nil {
 		return nil, err
 	}
 
 	// Auto-migrate: move to new location
-	pacerDir := filepath.Join(dir, ".pacer")
-	if err := os.MkdirAll(pacerDir, 0755); err == nil {
+	cladeDir := filepath.Join(dir, ".clade")
+	if err := os.MkdirAll(cladeDir, 0755); err == nil {
 		if err := os.Rename(oldPath, newPath); err == nil {
 			// Migration successful - silently continue
 		}

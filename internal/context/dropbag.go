@@ -16,9 +16,9 @@ type DropbagInfo struct {
 	RelativeAge string
 }
 
-// ReadDropbag reads the most recent DROPBAG-*.md file from .pacer/dropbags/
+// ReadDropbag reads the most recent DROPBAG-*.md file from .clade/dropbags/
 func ReadDropbag(dir string) (*DropbagInfo, error) {
-	archiveDir := filepath.Join(dir, ".pacer", "dropbags")
+	archiveDir := filepath.Join(dir, ".clade", "dropbags")
 
 	info := &DropbagInfo{
 		Exists: false,
@@ -73,6 +73,39 @@ func ReadDropbag(dir string) (*DropbagInfo, error) {
 	info.ModTime = newestTime
 	info.Exists = true
 	info.RelativeAge = formatRelativeTime(newestTime)
+
+	return info, nil
+}
+
+// ReadAutoDropbag reads the auto-generated DROPBAG from .clade/DROPBAG-auto.md.
+// This is separate from ReadDropbag() which reads manual /drop files from .clade/dropbags/.
+func ReadAutoDropbag(dir string) (*DropbagInfo, error) {
+	autoPath := filepath.Join(dir, ".clade", "DROPBAG-auto.md")
+
+	info := &DropbagInfo{
+		Exists: false,
+	}
+
+	data, err := os.ReadFile(autoPath)
+	if err != nil {
+		// File doesn't exist or can't read — no auto-dropbag available
+		return info, nil
+	}
+
+	content := strings.TrimSpace(string(data))
+	if content == "" {
+		return info, nil
+	}
+
+	stat, err := os.Stat(autoPath)
+	if err != nil {
+		return info, nil
+	}
+
+	info.Content = content
+	info.ModTime = stat.ModTime()
+	info.Exists = true
+	info.RelativeAge = formatRelativeTime(stat.ModTime())
 
 	return info, nil
 }

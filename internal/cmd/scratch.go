@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/daniil-lyalko/pacer/internal/config"
-	"github.com/daniil-lyalko/pacer/internal/hooks"
-	"github.com/daniil-lyalko/pacer/internal/ui"
-	"github.com/daniil-lyalko/pacer/internal/util"
+	"github.com/daniil-lyalko/clade/internal/config"
+	"github.com/daniil-lyalko/clade/internal/hooks"
+	"github.com/daniil-lyalko/clade/internal/ui"
+	"github.com/daniil-lyalko/clade/internal/util"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
@@ -28,17 +28,17 @@ var scratchCmd = &cobra.Command{
 	Short: "Create a no-git scratch folder for documents or analysis",
 	Long: `Create a scratch folder without git for quick document analysis or ad-hoc work.
 
-Unlike experiments, scratch folders:
+Unlike worktrees, scratch folders:
   - Have no git repository or worktree
   - Are for temporary document analysis, file sharing, etc.
   - Still get .claude/ config for hooks and context
 
 Examples:
-  pacer scratch doc-analysis       # Quick scratch folder
-  pacer scratch PROJ-1234          # Ticket investigation (no code)
-  pacer scratch meeting-notes      # Temporary workspace
-  pacer scratch foo -o cursor      # Open Cursor IDE
-  pacer scratch foo --no-agent     # Skip launching Claude`,
+  clade scratch doc-analysis       # Quick scratch folder
+  clade scratch PROJ-1234          # Ticket investigation (no code)
+  clade scratch meeting-notes      # Temporary workspace
+  clade scratch foo -o cursor      # Open Cursor IDE
+  clade scratch foo --no-agent     # Skip launching Claude`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runScratch,
 }
@@ -109,25 +109,19 @@ func runScratch(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create scratch directory: %w", err)
 	}
 
-	// Initialize .claude/ configuration (scratch-specific, no git assumptions)
-	ui.Info("Initializing .claude/ configuration...")
-	if err := initScratchConfig(scratchPath); err != nil {
-		ui.Warn("Failed to initialize .claude/: %v", err)
-	}
-
-	// Create .pacer/metadata.json
+	// Create .clade/metadata.json
 	ticket := extractTicketFromName(scratchName)
-	pacerMetadata := map[string]interface{}{
+	cladeMetadata := map[string]interface{}{
 		"type":    "scratch",
 		"name":    scratchName,
 		"ticket":  ticket,
 		"created": time.Now().Format(time.RFC3339),
 	}
-	metadataPath := filepath.Join(scratchPath, ".pacer", "metadata.json")
+	metadataPath := filepath.Join(scratchPath, ".clade", "metadata.json")
 	if err := os.MkdirAll(filepath.Dir(metadataPath), 0755); err != nil {
-		ui.Warn("Failed to create .pacer directory: %v", err)
+		ui.Warn("Failed to create .clade directory: %v", err)
 	}
-	if err := util.WriteJSON(metadataPath, pacerMetadata); err != nil {
+	if err := util.WriteJSON(metadataPath, cladeMetadata); err != nil {
 		ui.Warn("Failed to write metadata.json: %v", err)
 	}
 
@@ -191,51 +185,3 @@ func extractTicketFromName(name string) string {
 	return ""
 }
 
-// initScratchConfig initializes .claude/ for scratch folders (no git assumptions)
-func initScratchConfig(scratchPath string) error {
-	claudeDir := filepath.Join(scratchPath, ".claude")
-	commandsDir := filepath.Join(claudeDir, "commands")
-
-	// Ensure directories exist
-	if err := os.MkdirAll(commandsDir, 0755); err != nil {
-		return err
-	}
-
-	// Write settings.json (same as regular init)
-	settingsPath := filepath.Join(claudeDir, "settings.json")
-	if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
-		if err := writeSettingsJSON(settingsPath); err != nil {
-			return err
-		}
-	}
-
-	// Write drop.md command
-	dropPath := filepath.Join(commandsDir, "drop.md")
-	if _, err := os.Stat(dropPath); os.IsNotExist(err) {
-		if err := writeDropCommand(dropPath); err != nil {
-			return err
-		}
-	}
-
-	// Cursor hooks and commands
-	cursorDir := filepath.Join(scratchPath, ".cursor")
-	cursorCommandsDir := filepath.Join(cursorDir, "commands")
-	if err := os.MkdirAll(cursorCommandsDir, 0755); err != nil {
-		return err
-	}
-	cursorHooksPath := filepath.Join(cursorDir, "hooks.json")
-	if _, err := os.Stat(cursorHooksPath); os.IsNotExist(err) {
-		if err := writeCursorHooksJSON(cursorHooksPath); err != nil {
-			return err
-		}
-	}
-	cursorDropPath := filepath.Join(cursorCommandsDir, "drop.md")
-	if _, err := os.Stat(cursorDropPath); os.IsNotExist(err) {
-		if err := writeCursorDropCommand(cursorDropPath); err != nil {
-			return err
-		}
-	}
-
-	// Note: No .gitignore update for scratches (they're not git repos)
-	return nil
-}

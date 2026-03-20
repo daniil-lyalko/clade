@@ -6,10 +6,11 @@ import (
 	"hash/fnv"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
-	"github.com/daniil-lyalko/pacer/internal/context"
-	"github.com/daniil-lyalko/pacer/internal/git"
+	"github.com/daniil-lyalko/clade/internal/context"
+	"github.com/daniil-lyalko/clade/internal/git"
 	"github.com/spf13/cobra"
 )
 
@@ -21,7 +22,7 @@ var injectCmd = &cobra.Command{
 	Hidden: true, // Not meant to be called directly by users
 	Long: `Outputs session context to stdout for the AI agent to consume.
 
-This command is called automatically by hooks configured by 'pacer init':
+This command is called automatically by hooks configured by 'clade init':
   - Claude Code: SessionStart hook (plain text output)
   - Cursor: sessionStart hook (JSON output, auto-detected)
 
@@ -34,8 +35,8 @@ When Cursor loads both .cursor/hooks.json and .claude/settings.json (via
 "Third-party hooks"), deduplication prevents double injection: the second
 call within 3 seconds outputs nothing.
 
-Use 'pacer inject-context' from a terminal to test plain text output.
-Use 'echo {} | pacer inject-context --json' to test JSON output.`,
+Use 'clade inject-context' from a terminal to test plain text output.
+Use 'echo {} | clade inject-context --json' to test JSON output.`,
 	RunE: runInjectContext,
 }
 
@@ -83,6 +84,12 @@ func runInjectContext(cmd *cobra.Command, args []string) error {
 	// Format context
 	output := context.FormatContext(ctx)
 
+	// Check for recent hook failures
+	if hookWarnings := checkHookFailures(dir); hookWarnings != "" {
+		// Prepend hook warnings to context
+		output = hookWarnings + "\n\n" + output
+	}
+
 	// Auto-detect output format:
 	// - Claude Code sets CLAUDE_PROJECT_DIR → plain text to stdout
 	// - Cursor does not set CLAUDE_PROJECT_DIR → JSON with additional_context
@@ -128,7 +135,7 @@ func needsJSONOutput() bool {
 func dedupPath(dir string) string {
 	h := fnv.New32a()
 	h.Write([]byte(dir))
-	return filepath.Join(os.TempDir(), fmt.Sprintf("pacer-inject-%x", h.Sum32()))
+	return filepath.Join(os.TempDir(), fmt.Sprintf("clade-inject-%x", h.Sum32()))
 }
 
 // wasRecentlyInjected checks if inject-context was called for this
@@ -145,4 +152,54 @@ func wasRecentlyInjected(dir string) bool {
 func markInjected(dir string) {
 	// Security: Use restrictive permissions (owner-only)
 	os.WriteFile(dedupPath(dir), []byte("1"), 0600)
+}
+
+// checkHookFailures reads .clade/last-hook-results.json and returns warnings for failed hooks.
+func checkHookFailures(dir string) string {
+	resultsPath := filepath.Join(dir, ".clade", "last-hook-results.json")
+
+	data, err := os.ReadFile(resultsPath)
+	if err != nil {
+		return "" // No results file or can't read - skip silently
+	}
+
+	type jsonResult struct {
+		Command  string  `json:"command"`
+		Output   string  `json:"output,omitempty"`
+		Error    string  `json:"error,omitempty"`
+		Duration float64 `json:"duration_seconds"`
+	}
+
+	var results []jsonResult
+	if err := json.Unmarshal(data, &results); err != nil {
+		return ""
+	}
+
+	// Check if results are recent (within last 5 minutes)
+	info, err := os.Stat(resultsPath)
+	if err != nil || time.Since(info.ModTime()) > 5*time.Minute {
+		return "" // Stale results, ignore
+	}
+
+	// Build warning message for failed hooks
+	var warnings []string
+	for _, r := range results {
+		if r.Error != "" {
+			warnings = append(warnings, fmt.Sprintf("- %s: %s", r.Command, r.Error))
+		}
+	}
+
+	if len(warnings) == 0 {
+		return ""
+	}
+
+	var buf strings.Builder
+	buf.WriteString("## Hook Execution Warnings\n\n")
+	buf.WriteString("The following lifecycle hooks failed:\n\n")
+	for _, w := range warnings {
+		buf.WriteString(w + "\n")
+	}
+	buf.WriteString("\nYou may need to run these commands manually.\n")
+
+	return buf.String()
 }

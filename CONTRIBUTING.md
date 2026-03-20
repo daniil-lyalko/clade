@@ -1,6 +1,6 @@
-# Contributing to Pacer
+# Contributing to Clade
 
-Thank you for your interest in contributing to Pacer! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to Clade! This document provides guidelines and information for contributors.
 
 ## Development Setup
 
@@ -13,14 +13,14 @@ Thank you for your interest in contributing to Pacer! This document provides gui
 
 ```bash
 # Clone the repository
-git clone https://github.com/daniil-lyalko/pacer.git
-cd pacer
+git clone https://github.com/daniil-lyalko/clade.git
+cd clade
 
 # Build
-go build ./cmd/pacer
+go build ./cmd/clade
 
 # Or install directly
-go install ./cmd/pacer
+go install ./cmd/clade
 ```
 
 ### Running Tests
@@ -84,7 +84,7 @@ Write clear, concise commit messages:
 
 ```
 pacer/
-├── cmd/pacer/          # Main entry point
+├── cmd/clade/          # Main entry point
 ├── internal/
 │   ├── cmd/            # Cobra commands
 │   ├── config/         # Configuration and state
@@ -97,7 +97,7 @@ pacer/
 ## Reporting Issues
 
 When reporting bugs, please include:
-- Pacer version (`pacer --version`)
+- Clade version (`clade --version`)
 - Operating system and version
 - Steps to reproduce
 - Expected vs actual behavior

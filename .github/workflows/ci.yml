@@ -84,11 +84,11 @@ jobs:
         run: make build
 
       - name: Test binary runs
-        run: ./pacer --version
+        run: ./clade --version
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pacer-${{ matrix.os }}
-          path: pacer
+          name: clade-${{ matrix.os }}
+          path: clade
           retention-days: 7

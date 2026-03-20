@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/daniil-lyalko/pacer/internal/config"
+	"github.com/daniil-lyalko/clade/internal/config"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
@@ -16,11 +16,11 @@ var openCmd = &cobra.Command{
 	Long: `Print the path to a worktree for use with cd.
 
 Examples:
-  cd $(pacer open try-redis)
-  cd $(pacer open)              # Interactive picker
+  cd $(clade open try-redis)
+  cd $(clade open)              # Interactive picker
 
 Tip: Add a shell alias for convenience:
-  alias cdo='cd $(pacer open)'`,
+  alias cdo='cd $(clade open)'`,
 	Args:              cobra.MaximumNArgs(1),
 	RunE:              runOpen,
 	ValidArgsFunction: completeResumableNames,
@@ -74,7 +74,7 @@ func runOpen(cmd *cobra.Command, args []string) error {
 
 func openInteractive(cfg *config.Config, state *config.State) error {
 	if len(state.Experiments) == 0 && len(state.Projects) == 0 && len(state.Scratches) == 0 {
-		return fmt.Errorf("no experiments, projects, or scratch folders")
+		return fmt.Errorf("no worktrees, projects, or scratch folders")
 	}
 
 	type pickItem struct {

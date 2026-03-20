@@ -7,9 +7,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/daniil-lyalko/pacer/internal/config"
-	"github.com/daniil-lyalko/pacer/internal/git"
-	"github.com/daniil-lyalko/pacer/internal/ui"
+	"github.com/daniil-lyalko/clade/internal/config"
+	"github.com/daniil-lyalko/clade/internal/git"
+	"github.com/daniil-lyalko/clade/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -88,7 +88,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	// List v1 experiments (legacy format)
 	if len(state.Experiments) > 0 {
 		hasContent = true
-		ui.Header("Experiments (legacy):")
+		ui.Header("Legacy worktrees (v1):")
 		for _, exp := range state.Experiments {
 			printExperiment(exp)
 		}
@@ -117,9 +117,9 @@ func runList(cmd *cobra.Command, args []string) error {
 
 	if !hasContent {
 		ui.Info("No active worktrees, projects, or scratch folders")
-		ui.Detail("Create one with: pacer <name>")
-		ui.Detail("Or with type prefix: pacer <name> -t feature")
-		ui.Detail("Or for no-git: pacer scratch <name>")
+		ui.Detail("Create one with: clade <name>")
+		ui.Detail("Or with type prefix: clade <name> -t feature")
+		ui.Detail("Or for no-git: clade scratch <name>")
 	}
 
 	return nil
@@ -248,7 +248,7 @@ func runListJSON(cfg *config.Config, state *config.State) error {
 	return nil
 }
 
-// UntrackedWorktree represents a git worktree not tracked by pacer
+// UntrackedWorktree represents a git worktree not tracked by clade
 type UntrackedWorktree struct {
 	Path   string
 	Branch string

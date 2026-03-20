@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/daniil-lyalko/clade/internal/git"
 	"github.com/manifoldco/promptui"
 )
 
@@ -20,7 +21,7 @@ type LabelConfig struct {
 	MergeExpected bool   `json:"merge_expected"`
 }
 
-// Config holds the user configuration for pacer
+// Config holds the user configuration for clade
 type Config struct {
 	BaseDir            string                  `json:"base_dir"`
 	Agent              string                  `json:"agent"`
@@ -39,7 +40,7 @@ type Config struct {
 func DefaultConfig() *Config {
 	homeDir, _ := os.UserHomeDir()
 	return &Config{
-		BaseDir:            filepath.Join(homeDir, "pacer"),
+		BaseDir:            filepath.Join(homeDir, "clade"),
 		Agent:              "",  // Set by first-run wizard
 		AgentFlags:         []string{},
 		Editor:             "",  // Set by first-run wizard
@@ -53,24 +54,24 @@ func DefaultConfig() *Config {
 }
 
 // ConfigPath returns the path to the config file
-// Always uses ~/.config/pacer/ for consistency across platforms
+// Always uses ~/.config/clade/ for consistency across platforms
 func ConfigPath() (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(homeDir, ".config", "pacer", "config.json"), nil
+	return filepath.Join(homeDir, ".config", "clade", "config.json"), nil
 }
 
 // legacyConfigPath returns the old platform-specific config path (for migration)
-// macOS: ~/Library/Application Support/pacer/config.json
-// Linux: ~/.config/pacer/config.json (same as new path)
+// macOS: ~/Library/Application Support/clade/config.json
+// Linux: ~/.config/clade/config.json (same as new path)
 func legacyConfigPath() (string, error) {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(configDir, "pacer", "config.json"), nil
+	return filepath.Join(configDir, "clade", "config.json"), nil
 }
 
 // Load reads the config from disk, creating default if not exists
@@ -100,6 +101,11 @@ func Load() (*Config, error) {
 				if err := cfg.Save(); err != nil {
 					return nil, err
 				}
+				// After first-run wizard, check if user is in a git repo and offer to register it
+				if err := offerRepoRegistration(cfg); err != nil {
+					// Non-fatal - just print warning
+					fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+				}
 				return cfg, nil
 			}
 		} else {
@@ -125,7 +131,7 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-// migrateFromLegacyPath checks for config at legacy platform-specific path and migrates to ~/.config/pacer/
+// migrateFromLegacyPath checks for config at legacy platform-specific path and migrates to ~/.config/clade/
 // Returns (migrated bool, error)
 func migrateFromLegacyPath(newPath string) (bool, error) {
 	legacyPath, err := legacyConfigPath()
@@ -168,7 +174,7 @@ func migrateFromLegacyPath(newPath string) (bool, error) {
 // runFirstRunWizard prompts the user for initial configuration
 func runFirstRunWizard(cfg *Config) error {
 	fmt.Println()
-	fmt.Println("  Welcome to pacer! Let's set up your preferences.")
+	fmt.Println("  Welcome to clade! Let's set up your preferences.")
 	fmt.Println()
 
 	// Ask about AI coding tool
@@ -210,7 +216,7 @@ func runFirstRunWizard(cfg *Config) error {
 	}
 
 	fmt.Println()
-	fmt.Println("  Configuration saved to ~/.config/pacer/config.json")
+	fmt.Println("  Configuration saved to ~/.config/clade/config.json")
 	fmt.Println("  You can edit it anytime to change these settings.")
 	fmt.Println()
 
@@ -274,10 +280,10 @@ func (c *Config) ScratchDir() string {
 }
 
 // ArchiveDir returns the path to the session archive directory
-// Archives are stored in ~/.config/pacer/archive/ to persist across base_dir changes
+// Archives are stored in ~/.config/clade/archive/ to persist across base_dir changes
 func ArchiveDir() string {
 	homeDir, _ := os.UserHomeDir()
-	return filepath.Join(homeDir, ".config", "pacer", "archive")
+	return filepath.Join(homeDir, ".config", "clade", "archive")
 }
 
 // GetRepoCopyFiles returns the copy_files setting for a repo
@@ -319,4 +325,58 @@ func (c *Config) GetLabelConfig(label string) (LabelConfig, bool) {
 		return cfg, true
 	}
 	return LabelConfig{}, false
+}
+
+// offerRepoRegistration detects if the user is in a git repo and offers to register it.
+// Called after the first-run wizard completes.
+func offerRepoRegistration(cfg *Config) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil // Can't get cwd, skip silently
+	}
+
+	if !git.IsGitRepo(cwd) {
+		return nil // Not in a git repo, nothing to do
+	}
+
+	repoRoot, err := git.GetRepoRoot(cwd)
+	if err != nil {
+		return nil // Can't get repo root, skip
+	}
+
+	repoName := git.GetRepoName(repoRoot)
+
+	// Check if already registered
+	for _, path := range cfg.Repos {
+		if ExpandPath(path) == repoRoot {
+			return nil // Already registered
+		}
+	}
+
+	// Offer to register
+	fmt.Println()
+	fmt.Printf("  Detected git repository: %s\n", repoName)
+	fmt.Printf("  Path: %s\n", repoRoot)
+	fmt.Println()
+
+	prompt := promptui.Prompt{
+		Label:     "Register this repository for quick access",
+		IsConfirm: true,
+		Default:   "y",
+	}
+
+	if _, err := prompt.Run(); err != nil {
+		// User declined
+		fmt.Println("  Skipped. You can register it later with: clade repo add <path>")
+		return nil
+	}
+
+	// Register the repo
+	cfg.Repos[repoName] = repoRoot
+	if err := cfg.Save(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	fmt.Printf("  Registered '%s'\n", repoName)
+	return nil
 }

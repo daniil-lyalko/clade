@@ -1,6 +1,6 @@
-# Pacer Troubleshooting Guide
+# Clade Troubleshooting Guide
 
-This guide helps diagnose and resolve common issues with Pacer.
+This guide helps diagnose and resolve common issues with Clade.
 
 ---
 
@@ -27,17 +27,17 @@ Run these commands to quickly identify issues:
 
 ```bash
 # Full diagnostic check
-pacer doctor
+clade doctor
 
 # Enable verbose output for any command
-pacer --verbose list
-pacer --verbose resume my-worktree
+clade --verbose list
+clade --verbose resume my-worktree
 
 # Test hook output manually
-pacer inject-context
+clade inject-context
 
 # Test Cursor JSON format
-echo '{}' | pacer inject-context
+echo '{}' | clade inject-context
 ```
 
 ---
@@ -48,32 +48,32 @@ echo '{}' | pacer inject-context
 
 **Error:**
 ```
-Not in a git repository. Register repos with: pacer repo add <path>
+Not in a git repository. Register repos with: clade repo add <path>
 ```
 
-**Cause:** You're running pacer from a directory that isn't a git repository, and no repo was specified.
+**Cause:** You're running clade from a directory that isn't a git repository, and no repo was specified.
 
 **Solutions:**
 
 1. **Navigate to a git repo first:**
    ```bash
    cd ~/repos/my-api
-   pacer try-redis -t spike
+   clade try-redis -t spike
    ```
 
 2. **Register repos for use from anywhere:**
    ```bash
-   pacer repo add ~/repos/my-api
-   pacer repo add ~/repos/my-frontend
+   clade repo add ~/repos/my-api
+   clade repo add ~/repos/my-frontend
 
    # Then use from anywhere:
-   pacer try-redis -t spike -r my-api
+   clade try-redis -t spike -r my-api
    ```
 
 3. **Use the repo picker:**
    ```bash
-   # If you have registered repos, pacer will show a picker
-   pacer try-redis -t spike
+   # If you have registered repos, clade will show a picker
+   clade try-redis -t spike
    # Select repo:
    #   > my-api (last used)
    #     my-frontend
@@ -84,7 +84,7 @@ Not in a git repository. Register repos with: pacer repo add <path>
 ### Hook not firing / No context injection
 
 **Symptoms:**
-- Claude starts but doesn't show "Session context loaded from pacer"
+- Claude starts but doesn't show "Session context loaded from clade"
 - No DROPBAG.md or git status in context
 - `/drop` command doesn't work
 
@@ -98,7 +98,7 @@ Not in a git repository. Register repos with: pacer repo add <path>
 
 2. **Initialize if missing:**
    ```bash
-   pacer init
+   clade init
    ```
 
 3. **Verify settings.json content:**
@@ -114,7 +114,7 @@ Not in a git repository. Register repos with: pacer repo add <path>
          "matcher": "*",
          "hooks": [{
            "type": "command",
-           "command": "pacer inject-context"
+           "command": "clade inject-context"
          }]
        }]
      }
@@ -123,11 +123,11 @@ Not in a git repository. Register repos with: pacer repo add <path>
 
 4. **Test inject-context manually:**
    ```bash
-   pacer inject-context
+   clade inject-context
    ```
 
    Should output context in Markdown format. If it fails, check:
-   - Is pacer in your PATH? (`which pacer`)
+   - Is clade in your PATH? (`which clade`)
    - Are there any error messages?
 
 5. **For Cursor users, check .cursor/hooks.json:**
@@ -136,8 +136,8 @@ Not in a git repository. Register repos with: pacer repo add <path>
    ```
 
 **Common fixes:**
-- Run `pacer init` to regenerate hooks
-- Ensure pacer binary is in PATH
+- Run `clade init` to regenerate hooks
+- Ensure clade binary is in PATH
 - Restart Claude Code / Cursor after modifying hook files
 
 ---
@@ -155,7 +155,7 @@ Agent not found: cursor
 
 **Diagnosis:**
 ```bash
-pacer doctor
+clade doctor
 # Look for the "Agent" check
 ```
 
@@ -174,9 +174,9 @@ pacer doctor
    export PATH="$PATH:/path/to/agent/binary"
    ```
 
-3. **Update pacer config with correct path:**
+3. **Update clade config with correct path:**
    ```bash
-   # Edit ~/.config/pacer/config.json
+   # Edit ~/.config/clade/config.json
    {
      "agent": "/full/path/to/claude"
    }
@@ -184,7 +184,7 @@ pacer doctor
 
 4. **Or skip agent launch:**
    ```bash
-   pacer try-redis -t spike --no-agent
+   clade try-redis -t spike --no-agent
    ```
 
 ---
@@ -200,9 +200,9 @@ The branch is already checked out in another worktree.
 
 **Solution:** Use a different branch name or clean up the existing worktree:
 ```bash
-pacer list                    # Find existing worktree
-pacer cleanup existing-name   # Remove it
-pacer new-name -t spike       # Create with new name
+clade list                    # Find existing worktree
+clade cleanup existing-name   # Remove it
+clade new-name -t spike       # Create with new name
 ```
 
 **"Preparing worktree (new branch 'branch-name')... fatal: A branch named 'branch-name' already exists"**
@@ -210,11 +210,11 @@ pacer new-name -t spike       # Create with new name
 **Solution:** The branch exists but isn't checked out anywhere. Either:
 ```bash
 # Use the existing branch (adopt it)
-pacer resume branch-name -r my-repo
+clade resume branch-name -r my-repo
 
 # Or delete the branch and recreate
 git branch -d branch-name
-pacer branch-name -t spike
+clade branch-name -t spike
 ```
 
 **"Invalid branch name"**
@@ -234,7 +234,7 @@ pacer branch-name -t spike
 Skipping symlink: .env -> /etc/secrets/env
 ```
 
-**Cause:** For security, pacer refuses to follow symlinks when copying files to worktrees. This prevents symlink attacks where a malicious repo could trick pacer into copying sensitive files.
+**Cause:** For security, clade refuses to follow symlinks when copying files to worktrees. This prevents symlink attacks where a malicious repo could trick clade into copying sensitive files.
 
 **Solutions:**
 
@@ -247,10 +247,10 @@ Skipping symlink: .env -> /etc/secrets/env
 
 2. **Use hooks to handle symlinks:**
    ```yaml
-   # ~/.config/pacer/hooks.yaml
+   # ~/.config/clade/hooks.yaml
    hooks:
      on_create:
-       - cp -L "$PACER_REPO_PATH/.env" ./ 2>/dev/null || true
+       - cp -L "$CLADE_REPO_PATH/.env" ./ 2>/dev/null || true
    ```
    The `-L` flag follows symlinks.
 
@@ -260,17 +260,17 @@ Skipping symlink: .env -> /etc/secrets/env
 
 ### Hook trust prompt appears repeatedly
 
-**Symptom:** Every time you run pacer, it asks to trust repo hooks again.
+**Symptom:** Every time you run clade, it asks to trust repo hooks again.
 
 **Causes:**
 
-1. **Hook file changed:** The `.pacer/hooks.yaml` content changed, invalidating the trust hash.
+1. **Hook file changed:** The `.clade/hooks.yaml` content changed, invalidating the trust hash.
 
    **Solution:** Review the changes and approve the new version:
    ```
    The hooks for this repository have changed.
 
-   File: .pacer/hooks.yaml
+   File: .clade/hooks.yaml
    New hooks:
      on_create:
        - npm install
@@ -281,14 +281,14 @@ Skipping symlink: .env -> /etc/secrets/env
 
 2. **Trust registry not writable:**
    ```bash
-   ls -la ~/.config/pacer/trusted-repos.json
+   ls -la ~/.config/clade/trusted-repos.json
    # Check permissions
    ```
 
 3. **CI/testing environment:** Set environment variable to skip trust:
    ```bash
-   export PACER_TRUST_REPO_HOOKS=1
-   pacer try-redis -t spike
+   export CLADE_TRUST_REPO_HOOKS=1
+   clade try-redis -t spike
    ```
 
    **Warning:** Only use this in trusted CI environments, never in production.
@@ -298,17 +298,17 @@ Skipping symlink: .env -> /etc/secrets/env
 ### State file corruption
 
 **Symptoms:**
-- `pacer list` shows incorrect worktrees
+- `clade list` shows incorrect worktrees
 - Error parsing state.json
 - Worktrees exist on disk but not in state
 
 **Diagnosis:**
 ```bash
-pacer doctor
+clade doctor
 # Look for "State file" check
 
 # Inspect state file directly
-cat ~/pacer/state.json | jq .
+cat ~/clade/state.json | jq .
 ```
 
 **Solutions:**
@@ -316,22 +316,22 @@ cat ~/pacer/state.json | jq .
 1. **Rebuild state from disk:**
    ```bash
    # Manual approach - inspect what exists
-   ls ~/pacer/repos/*/
+   ls ~/clade/repos/*/
 
-   # Remove state and let pacer rebuild
-   rm ~/pacer/state.json
-   pacer list  # Will show empty, then re-add
+   # Remove state and let clade rebuild
+   rm ~/clade/state.json
+   clade list  # Will show empty, then re-add
    ```
 
 2. **Restore from backup (if using v1 migration):**
    ```bash
-   cp ~/pacer/state.json.v1.backup ~/pacer/state.json
+   cp ~/clade/state.json.v1.backup ~/clade/state.json
    ```
 
 3. **Fix manually:**
    ```bash
    # Edit state.json to match reality
-   vim ~/pacer/state.json
+   vim ~/clade/state.json
    ```
 
 ---
@@ -339,16 +339,16 @@ cat ~/pacer/state.json | jq .
 ### Orphaned worktrees
 
 **Symptoms:**
-- Pacer shows worktree but directory doesn't exist
-- Directory exists but `pacer list` doesn't show it
-- Git worktree exists but pacer state is out of sync
+- Clade shows worktree but directory doesn't exist
+- Directory exists but `clade list` doesn't show it
+- Git worktree exists but clade state is out of sync
 
 **Diagnosis:**
 
 ```bash
-# Compare what pacer knows vs what exists
-pacer list
-ls ~/pacer/repos/*/
+# Compare what clade knows vs what exists
+clade list
+ls ~/clade/repos/*/
 
 # Compare with git's worktree tracking
 cd ~/repos/my-api  # Your source repo
@@ -357,30 +357,30 @@ git worktree list
 
 **Solutions:**
 
-**Scenario 1: Pacer shows worktree but directory is missing**
+**Scenario 1: Clade shows worktree but directory is missing**
 
-The directory was deleted outside of pacer (manual `rm`, disk cleanup, etc.):
+The directory was deleted outside of clade (manual `rm`, disk cleanup, etc.):
 
 ```bash
 # Option A: Remove stale entry by resetting state
-rm ~/pacer/state.json
-pacer list  # Fresh start
+rm ~/clade/state.json
+clade list  # Fresh start
 
 # Option B: Recreate the worktree
-pacer foo -t spike  # Will create it again
+clade foo -t spike  # Will create it again
 ```
 
-**Scenario 2: Directory exists but pacer doesn't know about it**
+**Scenario 2: Directory exists but clade doesn't know about it**
 
 Worktree was created manually or state was corrupted:
 
 ```bash
 # If you want to keep it, just resume it
-# Pacer will "adopt" existing directories
-pacer resume foo -r my-repo
+# Clade will "adopt" existing directories
+clade resume foo -r my-repo
 
 # If you don't need it, remove manually
-rm -rf ~/pacer/repos/my-repo/foo
+rm -rf ~/clade/repos/my-repo/foo
 git -C ~/repos/my-api worktree prune
 ```
 
@@ -397,9 +397,9 @@ git worktree prune      # Remove stale entries
 
 **Prevention:**
 
-Always use `pacer cleanup` instead of manually deleting worktree directories. This ensures:
+Always use `clade cleanup` instead of manually deleting worktree directories. This ensures:
 1. Git worktree is properly removed
-2. Pacer state is updated
+2. Clade state is updated
 3. Session context is archived for future reference
 
 ---
@@ -415,7 +415,7 @@ or
 invalid branch name "../../etc/passwd": cannot contain '..'
 ```
 
-**Cause:** Pacer validates branch names to prevent command injection attacks. Certain characters are blocked.
+**Cause:** Clade validates branch names to prevent command injection attacks. Certain characters are blocked.
 
 **Allowed characters:**
 - Letters (a-z, A-Z)
@@ -434,33 +434,33 @@ invalid branch name "../../etc/passwd": cannot contain '..'
 **Solution:** Use a valid branch name:
 ```bash
 # Bad
-pacer "my feature" -t spike
-pacer "test; rm -rf /" -t spike
+clade "my feature" -t spike
+clade "test; rm -rf /" -t spike
 
 # Good
-pacer my-feature -t spike
-pacer test-feature -t spike
+clade my-feature -t spike
+clade test-feature -t spike
 ```
 
 ---
 
 ## Diagnostic Commands
 
-### `pacer doctor`
+### `clade doctor`
 
 Comprehensive health check:
 
 ```bash
-$ pacer doctor
+$ clade doctor
 
-Pacer Doctor
+Clade Doctor
 
   ✓ Config file (config.json)
       agent: claude, editor: cursor
   ✓ State file
       v2, 5 worktree(s), 1 project(s), 2 scratch(es)
   ✓ Base directory
-      /Users/user/pacer
+      /Users/user/clade
   ✓ Git
       git version 2.43.0
   ✓ Agent
@@ -475,12 +475,12 @@ Pacer Doctor
 ⚠ All checks passed with 1 warning(s)
 ```
 
-### `pacer --verbose`
+### `clade --verbose`
 
 Enable debug output for any command:
 
 ```bash
-$ pacer --verbose list
+$ clade --verbose list
   [debug] Loading config from /Users/user/.config/pacer/config.json
   [debug] Loading state from /Users/user/pacer/state.json
   [debug] Found 5 worktrees across 2 repos
@@ -490,13 +490,13 @@ my-api (3 worktrees)
   ...
 ```
 
-### `pacer inject-context`
+### `clade inject-context`
 
 Test context injection manually:
 
 ```bash
 # Plain text (Claude Code format)
-$ pacer inject-context
+$ clade inject-context
 
 # Session Context
 
@@ -511,16 +511,16 @@ On branch spike/try-redis
 abc1234 - feat: add cache layer
 
 # JSON format (Cursor format)
-$ echo '{}' | pacer inject-context
+$ echo '{}' | clade inject-context
 {"additional_context":"# Session Context\n\n## DROPBAG.md..."}
 ```
 
-### `pacer status`
+### `clade status`
 
 Show context for current directory:
 
 ```bash
-$ pacer status
+$ clade status
 
 Worktree: try-redis
   Repo: my-api
@@ -548,11 +548,11 @@ Recent Commits:
 
 If you encounter an issue not covered here:
 
-1. Run `pacer doctor` and include the output
+1. Run `clade doctor` and include the output
 2. Run the failing command with `--verbose`
-3. Check the [GitHub Issues](https://github.com/daniil-lyalko/pacer/issues)
+3. Check the [GitHub Issues](https://github.com/daniil-lyalko/clade/issues)
 4. Open a new issue with:
-   - Pacer version (`pacer --version`)
+   - Clade version (`clade --version`)
    - OS and version
    - Full command that failed
    - Error message or unexpected behavior

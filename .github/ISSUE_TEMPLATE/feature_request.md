@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest a new feature for pacer
+about: Suggest a new feature for clade
 title: ''
 labels: enhancement
 assignees: ''
