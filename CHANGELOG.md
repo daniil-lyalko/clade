@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-03-20
+
+### Added
+- **Batch mode**: `clade batch <tickets...>` processes multiple JIRA tickets in parallel
+  - Configurable concurrency (`--concurrency N`, default 2)
+  - CSV file input (`--file tickets.csv`) with multi-repo column support
+  - Per-ticket Claude agent sessions with isolated worktrees
+  - Budget cap per ticket (`--budget X.XX` in USD)
+  - Custom prompt templates with `{TICKET_ID}` and `{BRANCH}` placeholders
+  - Status tracking: `clade batch status [batch-id]`
+  - Log retrieval: `clade batch logs <batch-id> <ticket-id>`
+  - Per-repo mutex prevents git lock conflicts during concurrent worktree creation
+  - State persisted to `~/.config/clade/batches/{id}/batch.json`
+- **Transcript-based auto-dropbag**: Session transcripts automatically generate a new timestamped file on session end: `.clade/dropbags/DROPBAG-auto-YYYY-MM-DD-HHMM.md`. A debounce check prevents multiple writes in quick succession. SessionStart reads the latest auto-dropbag for context injection.
+- **`--quiet` mode**: Suppress non-essential output for scripting and CI use
+
+### Changed
+- **Full pacer → clade rename** across entire codebase, configs, and hook files
+  - Binary: `pacer` → `clade`
+  - Config dir: `~/.config/pacer/` → `~/.config/clade/`
+  - State: `~/pacer/` → `~/clade/`
+  - Run `clade migrate` if upgrading from a pre-rename install
+
+### Fixed
+- **`GetRecentCommits`**: Was returning stale results; now correctly reads live git log
+
+### Known Limitations (batch mode, tracked for v0.7.1)
+- No SIGINT handler: Ctrl+C mid-batch leaves worktrees in "running" state; clean up with `clade cleanup <ticket-id>`
+- No timeout: A hung Claude process blocks its worker indefinitely; kill and clean up manually
+- No resume: Re-running creates a new batch; re-submit remaining tickets from `clade batch status <id>`
+- State divergence on crash: batch.json shows "running" for in-flight tickets after a crash
+
+### v0.6.x → v0.7.0 Migration
+
+If upgrading from a pre-rename install (binary was called `pacer`):
+```bash
+clade migrate
+```
+Config and state directories are auto-migrated on first run.
+
+---
+
 ## [0.5.0] - 2026-02-03
 
 ### Removed
