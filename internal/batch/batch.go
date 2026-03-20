@@ -68,8 +68,7 @@ type BatchState struct {
 	Prompt      string          `json:"prompt_template,omitempty"`
 	Tickets     []*TicketResult `json:"tickets"`
 
-	mu      sync.Mutex `json:"-"`
-	baseDir string     `json:"-"`
+	mu sync.Mutex `json:"-"`
 
 	// repoMu serializes worktree creation per source repo to avoid git lock conflicts
 	repoMu   map[string]*sync.Mutex `json:"-"`

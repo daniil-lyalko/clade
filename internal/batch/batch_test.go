@@ -514,7 +514,7 @@ func TestRepoMutex_ConcurrentAccess(t *testing.T) {
 			}
 			mu := b.RepoMutex(repo)
 			mu.Lock()
-			mu.Unlock()
+			mu.Unlock() //nolint:SA2001 // intentionally empty: tests lock acquisition under concurrency, not the critical section
 		}(i)
 	}
 	wg.Wait()
