@@ -174,8 +174,11 @@ func planClaudeHookActions(path string, force bool) []setupAction {
 	}
 
 	hooks := []hookDef{
-		{"SessionStart hook", "clade inject-context", "pacer inject-context"},
+		{"SessionStart hook (inject-context)", "clade inject-context", "pacer inject-context"},
+		{"SessionStart hook (session-start)", "command -v clade >/dev/null 2>&1 && clade session-start || true", ""},
+		{"Stop hook (session-stop)", "command -v clade >/dev/null 2>&1 && clade session-stop || true", ""},
 		{"Stop hook (auto-dropbag)", "command -v clade >/dev/null 2>&1 && clade auto-dropbag || true", ""},
+		{"PreCompact hook (session-compact)", "command -v clade >/dev/null 2>&1 && clade session-compact || true", ""},
 		{"PreCompact hook (auto-dropbag)", "command -v clade >/dev/null 2>&1 && clade auto-dropbag || true", ""},
 		{"PreCompact hook (context-warning)", "clade context-warning", ""},
 	}
@@ -401,9 +404,21 @@ func mergeClaudeSettingsHooks(path string, force bool) (bool, error) {
 	}
 	hooksObj["SessionStart"] = sessionStartJSON
 
+	// SessionStart: session-start hook (registers session in registry)
+	const sessionStartCommand = "command -v clade >/dev/null 2>&1 && clade session-start || true"
+	mergeHookArray(hooksObj, "SessionStart", sessionStartCommand)
+
+	// Stop hook: session-stop (handles session lifecycle)
+	const sessionStopCmd = "command -v clade >/dev/null 2>&1 && clade session-stop || true"
+	mergeHookArray(hooksObj, "Stop", sessionStopCmd)
+
 	// Stop hook (auto-dropbag) — parses session transcript for meaningful context
 	const stopCommand = "command -v clade >/dev/null 2>&1 && clade auto-dropbag || true"
 	mergeHookArray(hooksObj, "Stop", stopCommand)
+
+	// PreCompact hook: session-compact
+	const sessionCompactCmd = "command -v clade >/dev/null 2>&1 && clade session-compact || true"
+	mergeHookArray(hooksObj, "PreCompact", sessionCompactCmd)
 
 	// PreCompact hooks: auto-dropbag + context-warning
 	const preCompactDropbag = "command -v clade >/dev/null 2>&1 && clade auto-dropbag || true"
