@@ -46,6 +46,11 @@ func init() {
 }
 
 func runMigrate(cmd *cobra.Command, args []string) error {
+	// Handle --to-dotclade flag for v0.8 migration
+	if migrateToDotCladeFlag {
+		return runMigrateDotClade()
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
