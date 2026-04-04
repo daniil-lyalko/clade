@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -66,6 +68,161 @@ func TestSessionStop_Trivial(t *testing.T) {
 	loaded, err := reg.Get("trivial-sess")
 	require.NoError(t, err)
 	assert.Equal(t, session.StatusStopped, loaded.Status)
+}
+
+func TestQuickTranscriptScan_Empty(t *testing.T) {
+	userMsgs, hasEdits, hasCommands := quickTranscriptScan("")
+	assert.Equal(t, 0, userMsgs)
+	assert.False(t, hasEdits)
+	assert.False(t, hasCommands)
+}
+
+func TestQuickTranscriptScan_NonExistent(t *testing.T) {
+	userMsgs, hasEdits, hasCommands := quickTranscriptScan("/nonexistent/path.jsonl")
+	assert.Equal(t, 0, userMsgs)
+	assert.False(t, hasEdits)
+	assert.False(t, hasCommands)
+}
+
+func TestQuickTranscriptScan_UsersOnly(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "transcript.jsonl")
+	writeMinimalTranscript(t, path, 5, false, false)
+
+	userMsgs, hasEdits, hasCommands := quickTranscriptScan(path)
+	assert.Equal(t, 5, userMsgs)
+	assert.False(t, hasEdits)
+	assert.False(t, hasCommands)
+}
+
+func TestQuickTranscriptScan_WithEdits(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "transcript.jsonl")
+	writeMinimalTranscript(t, path, 3, true, false)
+
+	userMsgs, hasEdits, hasCommands := quickTranscriptScan(path)
+	assert.Equal(t, 3, userMsgs)
+	assert.True(t, hasEdits)
+	assert.False(t, hasCommands)
+}
+
+func TestQuickTranscriptScan_WithCommands(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "transcript.jsonl")
+	writeMinimalTranscript(t, path, 2, false, true)
+
+	userMsgs, hasEdits, hasCommands := quickTranscriptScan(path)
+	assert.Equal(t, 2, userMsgs)
+	assert.False(t, hasEdits)
+	assert.True(t, hasCommands) // >3 Bash calls
+}
+
+func TestExtractQuickSummary_Empty(t *testing.T) {
+	assert.Equal(t, "", extractQuickSummary(""))
+}
+
+func TestExtractQuickSummary_NonExistent(t *testing.T) {
+	assert.Equal(t, "", extractQuickSummary("/nonexistent/path.jsonl"))
+}
+
+func TestExtractQuickSummary_ReturnsLastAssistantText(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "transcript.jsonl")
+	f, err := os.Create(path)
+	require.NoError(t, err)
+
+	// Write a user message
+	user := map[string]interface{}{
+		"type":    "user",
+		"message": map[string]interface{}{"role": "user", "content": "fix the bug"},
+	}
+	data, _ := json.Marshal(user)
+	f.Write(data)
+	f.WriteString("\n")
+
+	// Write an assistant message
+	assistant := map[string]interface{}{
+		"type": "assistant",
+		"message": map[string]interface{}{
+			"role": "assistant",
+			"content": []map[string]interface{}{
+				{"type": "text", "text": "I fixed the Lambda timeout issue."},
+			},
+		},
+	}
+	data, _ = json.Marshal(assistant)
+	f.Write(data)
+	f.WriteString("\n")
+	f.Close()
+
+	summary := extractQuickSummary(path)
+	assert.Equal(t, "I fixed the Lambda timeout issue.", summary)
+}
+
+func TestExtractQuickSummary_Truncates(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "transcript.jsonl")
+	f, err := os.Create(path)
+	require.NoError(t, err)
+
+	longText := strings.Repeat("x", 400)
+	assistant := map[string]interface{}{
+		"type": "assistant",
+		"message": map[string]interface{}{
+			"role": "assistant",
+			"content": []map[string]interface{}{
+				{"type": "text", "text": longText},
+			},
+		},
+	}
+	data, _ := json.Marshal(assistant)
+	f.Write(data)
+	f.WriteString("\n")
+	f.Close()
+
+	summary := extractQuickSummary(path)
+	assert.LessOrEqual(t, len(summary), 304) // 300 + "..."
+	assert.True(t, strings.HasSuffix(summary, "..."))
+}
+
+func TestSessionHasInboxEntries_NoFiles(t *testing.T) {
+	dir := t.TempDir()
+	inbox := session.NewInbox(dir)
+	sess := &session.Session{Project: "my-project"}
+	assert.False(t, sessionHasInboxEntries(inbox, sess))
+}
+
+func TestSessionHasInboxEntries_MatchingProject(t *testing.T) {
+	dir := t.TempDir()
+	inbox := session.NewInbox(dir)
+
+	// Write an inbox entry for the project
+	entry := &session.InboxEntry{
+		Time:      time.Now(),
+		Project:   "my-project",
+		EntryType: session.EntryFYI,
+		Message:   "Did some work",
+	}
+	require.NoError(t, inbox.Append(entry))
+
+	sess := &session.Session{Project: "my-project"}
+	assert.True(t, sessionHasInboxEntries(inbox, sess))
+}
+
+func TestSessionHasInboxEntries_DifferentProject(t *testing.T) {
+	dir := t.TempDir()
+	inbox := session.NewInbox(dir)
+
+	entry := &session.InboxEntry{
+		Time:      time.Now(),
+		Project:   "other-project",
+		EntryType: session.EntryFYI,
+		Message:   "Did some work",
+	}
+	require.NoError(t, inbox.Append(entry))
+
+	sess := &session.Session{Project: "my-project"}
+	assert.False(t, sessionHasInboxEntries(inbox, sess))
 }
 
 func writeMinimalTranscript(t *testing.T, path string, userMsgCount int, hasEdits, hasCommands bool) {

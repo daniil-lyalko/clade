@@ -203,11 +203,15 @@ func migrateSingleFile(src, dst string) error {
 		return fmt.Errorf("failed to write destination %s: %w", dst, err)
 	}
 
-	// Replace source with symlink
-	if err := os.Remove(src); err != nil {
-		return fmt.Errorf("failed to remove source after copy %s: %w", src, err)
+	// Replace source with symlink. Keep a .bak copy instead of deleting
+	// (trash > rm per project convention).
+	bakPath := src + ".bak"
+	if err := os.Rename(src, bakPath); err != nil {
+		return fmt.Errorf("failed to back up source %s: %w", src, err)
 	}
 	if err := os.Symlink(dst, src); err != nil {
+		// Restore backup on symlink failure
+		os.Rename(bakPath, src)
 		return fmt.Errorf("failed to create symlink %s -> %s: %w", src, dst, err)
 	}
 	return nil

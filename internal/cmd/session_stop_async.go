@@ -66,8 +66,10 @@ func doSessionStopAsync(reg *session.Registry, inbox *session.Inbox, input *stop
 			content := transcript.FormatMarkdown(extract)
 
 			// 3. Write session dropbag to ~/.clade/sessions/{session_id}.md
-			dropbagPath := reg.DropbagPath(input.SessionID)
-			if err := os.MkdirAll(filepath.Dir(dropbagPath), 0755); err != nil {
+			dropbagPath, dbErr := reg.DropbagPath(input.SessionID)
+			if dbErr != nil {
+				fmt.Fprintf(os.Stderr, "clade: invalid session ID for dropbag: %v\n", dbErr)
+			} else if err := os.MkdirAll(filepath.Dir(dropbagPath), 0755); err != nil {
 				fmt.Fprintf(os.Stderr, "clade: failed to create dropbag dir: %v\n", err)
 			} else if err := os.WriteFile(dropbagPath, []byte(content), 0644); err != nil {
 				fmt.Fprintf(os.Stderr, "clade: failed to write dropbag: %v\n", err)

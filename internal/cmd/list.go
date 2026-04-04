@@ -9,6 +9,7 @@ import (
 
 	"github.com/daniil-lyalko/clade/internal/config"
 	"github.com/daniil-lyalko/clade/internal/git"
+	"github.com/daniil-lyalko/clade/internal/session"
 	"github.com/daniil-lyalko/clade/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -567,18 +568,11 @@ func formatAge(t time.Time) string {
 	return fmt.Sprintf("%d days ago", days)
 }
 
-// formatAgeShort returns a compact age string like "2h" or "3d"
+// formatAgeShort returns a compact age string like "2h ago" or "3d ago"
 func formatAgeShort(t time.Time) string {
 	d := time.Since(t)
-
 	if d < time.Minute {
 		return "now"
 	}
-	if d < time.Hour {
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
-	}
-	if d < 24*time.Hour {
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
-	}
-	return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	return session.FormatDurationCompact(d) + " ago"
 }

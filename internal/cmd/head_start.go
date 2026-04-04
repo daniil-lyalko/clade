@@ -59,7 +59,9 @@ func runHeadStart(cmd *cobra.Command, args []string) error {
 	// Build claude command
 	claudeCmd := "claude --remote"
 	if headStartChannelFlag != "" {
-		claudeCmd += fmt.Sprintf(" --channels plugin:%s@claude-plugins-official", headStartChannelFlag)
+		// Shell-escape channel value (single-quote with internal single-quote escaping)
+		quotedChannel := "'" + strings.ReplaceAll(headStartChannelFlag, "'", "'\"'\"'") + "'"
+		claudeCmd += fmt.Sprintf(" --channels plugin:%s@claude-plugins-official", quotedChannel)
 	}
 
 	// Quote headDir for safe shell interpolation (single quotes, escape internal single quotes)

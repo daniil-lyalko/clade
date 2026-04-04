@@ -95,10 +95,21 @@ func runInjectContext(cmd *cobra.Command, args []string) error {
 	// Scan inbox for cross-session updates
 	baseDir := config.DotCladeDir()
 	inbox := session.NewInbox(baseDir)
+	reg := session.NewRegistry(baseDir)
 
-	// Read all recent entries (offset tracking per-session is a future optimization)
+	sessionID := os.Getenv("CLAUDE_SESSION_ID")
+
+	// Load session to get last inbox read offset (avoids re-injecting old entries)
 	var inboxOffset int64
-	entries, _, err := inbox.ReadRecent(inboxOffset)
+	var sess *session.Session
+	if sessionID != "" {
+		if s, err := reg.Get(sessionID); err == nil {
+			sess = s
+			inboxOffset = s.InboxReadOffset
+		}
+	}
+
+	entries, newOffset, err := inbox.ReadRecent(inboxOffset)
 	if err == nil && len(entries) > 0 {
 		inboxSection := formatInboxContext(entries)
 		if inboxSection != "" {
@@ -106,14 +117,20 @@ func runInjectContext(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Persist the new offset so the next injection skips already-seen entries
+	if sess != nil && newOffset > inboxOffset {
+		sess.InboxReadOffset = newOffset
+		reg.Save(sess) // best-effort
+	}
+
 	// Read session dropbag from ~/.clade/sessions/{session_id}.md
-	reg := session.NewRegistry(baseDir)
-	if sessionID := os.Getenv("CLAUDE_SESSION_ID"); sessionID != "" {
-		dropbagPath := reg.DropbagPath(sessionID)
-		if data, err := os.ReadFile(dropbagPath); err == nil {
-			content := strings.TrimSpace(string(data))
-			if content != "" {
-				output = "## Session Context (from previous session)\n\n" + content + "\n\n" + output
+	if sessionID != "" {
+		if dropbagPath, err := reg.DropbagPath(sessionID); err == nil {
+			if data, err := os.ReadFile(dropbagPath); err == nil {
+				content := strings.TrimSpace(string(data))
+				if content != "" {
+					output = "## Session Context (from previous session)\n\n" + content + "\n\n" + output
+				}
 			}
 		}
 	}

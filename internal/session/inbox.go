@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -53,10 +52,10 @@ func (ib *Inbox) Append(entry *InboxEntry) error {
 		return fmt.Errorf("failed to open inbox file: %w", err)
 	}
 	defer f.Close()
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+	if err := flockExclusive(f.Fd()); err != nil {
 		return fmt.Errorf("failed to acquire lock: %w", err)
 	}
-	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	defer flockUnlock(f.Fd())
 	info, err := f.Stat()
 	if err != nil {
 		return err

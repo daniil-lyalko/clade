@@ -51,7 +51,9 @@ func TestReadSessionDropbag(t *testing.T) {
 	require.NoError(t, os.WriteFile(dropbagPath, []byte(content), 0644))
 
 	reg := session.NewRegistry(tmpDir)
-	data, err := os.ReadFile(reg.DropbagPath("test-session"))
+	dropbagPath, err := reg.DropbagPath("test-session")
+	require.NoError(t, err)
+	data, err := os.ReadFile(dropbagPath)
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "Some context here")
 }

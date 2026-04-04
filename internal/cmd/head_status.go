@@ -50,7 +50,7 @@ func runHeadStatus(cmd *cobra.Command, args []string) error {
 	if sess, err := reg.Get(name); err == nil {
 		if running {
 			uptime := time.Since(sess.Started)
-			ui.KeyValue("Uptime", formatDurationHuman(uptime))
+			ui.KeyValue("Uptime", session.FormatDuration(uptime))
 		}
 		ui.KeyValue("Last active", formatTimeAgo(sess.LastActive))
 	}
@@ -81,32 +81,8 @@ func runHeadStatus(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// formatDurationHuman formats a duration in a human-readable way.
-func formatDurationHuman(d time.Duration) string {
-	if d < time.Minute {
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	}
-	if d < time.Hour {
-		return fmt.Sprintf("%dm", int(d.Minutes()))
-	}
-	if d < 24*time.Hour {
-		h := int(d.Hours())
-		m := int(d.Minutes()) % 60
-		if m > 0 {
-			return fmt.Sprintf("%dh %dm", h, m)
-		}
-		return fmt.Sprintf("%dh", h)
-	}
-	days := int(d.Hours()) / 24
-	h := int(d.Hours()) % 24
-	if h > 0 {
-		return fmt.Sprintf("%dd %dh", days, h)
-	}
-	return fmt.Sprintf("%dd", days)
-}
-
 // formatTimeAgo formats a time as "X ago".
 func formatTimeAgo(t time.Time) string {
 	d := time.Since(t)
-	return formatDurationHuman(d) + " ago"
+	return session.FormatDuration(d) + " ago"
 }

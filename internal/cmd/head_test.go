@@ -140,13 +140,13 @@ func TestHeadStatus_ShowsCorrectState(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, info.IsDir())
 
-	// Test formatDurationHuman
-	assert.Equal(t, "30s", formatDurationHuman(30*time.Second))
-	assert.Equal(t, "5m", formatDurationHuman(5*time.Minute))
-	assert.Equal(t, "2h", formatDurationHuman(2*time.Hour))
-	assert.Equal(t, "2h 30m", formatDurationHuman(2*time.Hour+30*time.Minute))
-	assert.Equal(t, "3d", formatDurationHuman(72*time.Hour))
-	assert.Equal(t, "1d 6h", formatDurationHuman(30*time.Hour))
+	// Test session.FormatDuration (shared duration formatter)
+	assert.Equal(t, "30s", session.FormatDuration(30*time.Second))
+	assert.Equal(t, "5m", session.FormatDuration(5*time.Minute))
+	assert.Equal(t, "2h", session.FormatDuration(2*time.Hour))
+	assert.Equal(t, "2h 30m", session.FormatDuration(2*time.Hour+30*time.Minute))
+	assert.Equal(t, "3d", session.FormatDuration(72*time.Hour))
+	assert.Equal(t, "1d 6h", session.FormatDuration(30*time.Hour))
 }
 
 // --- sessions dashboard HEAD label test ---

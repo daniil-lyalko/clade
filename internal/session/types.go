@@ -58,15 +58,42 @@ func (s *Session) StatusLabel() string {
 	case StatusStopped:
 		age := time.Since(s.LastActive)
 		if age > StaleThreshold {
-			return fmt.Sprintf("stale %s", formatCompactDuration(age))
+			return fmt.Sprintf("stale %s", FormatDurationCompact(age))
 		}
-		return fmt.Sprintf("idle %s", formatCompactDuration(age))
+		return fmt.Sprintf("idle %s", FormatDurationCompact(age))
 	default:
 		return string(s.Status)
 	}
 }
 
-func formatCompactDuration(d time.Duration) string {
+// FormatDuration formats a duration in a human-readable compact form.
+// Examples: "5s", "12m", "2h 30m", "3d 2h".
+func FormatDuration(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	}
+	if d < 24*time.Hour {
+		h := int(d.Hours())
+		m := int(d.Minutes()) % 60
+		if m > 0 {
+			return fmt.Sprintf("%dh %dm", h, m)
+		}
+		return fmt.Sprintf("%dh", h)
+	}
+	days := int(d.Hours()) / 24
+	h := int(d.Hours()) % 24
+	if h > 0 {
+		return fmt.Sprintf("%dd %dh", days, h)
+	}
+	return fmt.Sprintf("%dd", days)
+}
+
+// FormatDurationCompact is like FormatDuration but always returns a single
+// unit (e.g. "2h" instead of "2h 30m"). Used for tight display contexts.
+func FormatDurationCompact(d time.Duration) string {
 	if d < time.Hour {
 		return fmt.Sprintf("%dm", int(d.Minutes()))
 	}
