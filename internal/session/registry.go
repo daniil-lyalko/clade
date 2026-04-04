@@ -149,71 +149,89 @@ func (r *Registry) Get(sessionID string) (*Session, error) {
 func (r *Registry) List() ([]*Session, error) {
 	var sessions []*Session
 	err := r.withReadLock(func() error {
-		entries, err := os.ReadDir(r.sessionsDir())
-		if err != nil {
-			if os.IsNotExist(err) {
-				return nil
-			}
-			return fmt.Errorf("failed to read sessions dir: %w", err)
-		}
-		for _, entry := range entries {
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
-				continue
-			}
-			data, err := os.ReadFile(filepath.Join(r.sessionsDir(), entry.Name()))
-			if err != nil {
-				continue
-			}
-			var sess Session
-			if err := json.Unmarshal(data, &sess); err != nil {
-				continue
-			}
-			sessions = append(sessions, &sess)
-		}
-		sort.Slice(sessions, func(i, j int) bool {
-			return sessions[i].LastActive.After(sessions[j].LastActive)
-		})
-		return nil
+		var err error
+		sessions, err = r.listUnlocked()
+		return err
 	})
 	return sessions, err
 }
 
+// listUnlocked reads all sessions without acquiring any lock.
+// Caller must hold at least a read lock.
+func (r *Registry) listUnlocked() ([]*Session, error) {
+	entries, err := os.ReadDir(r.sessionsDir())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read sessions dir: %w", err)
+	}
+	var sessions []*Session
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(r.sessionsDir(), entry.Name()))
+		if err != nil {
+			continue
+		}
+		var sess Session
+		if err := json.Unmarshal(data, &sess); err != nil {
+			continue
+		}
+		sessions = append(sessions, &sess)
+	}
+	sort.Slice(sessions, func(i, j int) bool {
+		return sessions[i].LastActive.After(sessions[j].LastActive)
+	})
+	return sessions, nil
+}
+
 func (r *Registry) Archive(sessionID string) error {
 	return r.withLock(func() error {
-		src, err := r.sessionPath(sessionID)
-		if err != nil {
-			return err
-		}
-		if err := os.MkdirAll(r.archiveDir(), 0755); err != nil {
-			return fmt.Errorf("failed to create archive dir: %w", err)
-		}
-		safe, err := sanitizeID(sessionID)
-		if err != nil {
-			return fmt.Errorf("invalid session ID %q: %w", sessionID, err)
-		}
-		dst := filepath.Join(r.archiveDir(), safe+".json")
-		if err := os.Rename(src, dst); err != nil {
-			return fmt.Errorf("failed to archive session %q: %w", sessionID, err)
-		}
-		return nil
+		return r.archiveUnlocked(sessionID)
 	})
 }
 
-func (r *Registry) ArchiveStale() (int, error) {
-	sessions, err := r.List()
+// archiveUnlocked moves a session to the archive directory without acquiring any lock.
+// Caller must hold an exclusive lock.
+func (r *Registry) archiveUnlocked(sessionID string) error {
+	src, err := r.sessionPath(sessionID)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	archived := 0
-	for _, sess := range sessions {
-		if sess.IsArchivable() {
-			if err := r.Archive(sess.SessionID); err != nil {
-				continue
-			}
-			archived++
+	if err := os.MkdirAll(r.archiveDir(), 0755); err != nil {
+		return fmt.Errorf("failed to create archive dir: %w", err)
+	}
+	safe, err := sanitizeID(sessionID)
+	if err != nil {
+		return fmt.Errorf("invalid session ID %q: %w", sessionID, err)
+	}
+	dst := filepath.Join(r.archiveDir(), safe+".json")
+	if err := os.Rename(src, dst); err != nil {
+		return fmt.Errorf("failed to archive session %q: %w", sessionID, err)
+	}
+	return nil
+}
+
+func (r *Registry) ArchiveStale() (int, error) {
+	var archived int
+	err := r.withLock(func() error {
+		sessions, err := r.listUnlocked()
+		if err != nil {
+			return err
 		}
-	}
-	return archived, nil
+		for _, sess := range sessions {
+			if sess.IsArchivable() {
+				if err := r.archiveUnlocked(sess.SessionID); err != nil {
+					continue
+				}
+				archived++
+			}
+		}
+		return nil
+	})
+	return archived, err
 }
 
 func (r *Registry) Delete(sessionID string) error {

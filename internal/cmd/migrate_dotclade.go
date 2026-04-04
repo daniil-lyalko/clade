@@ -230,11 +230,15 @@ func migrateSingleDir(src, dst string) error {
 	}
 
 	if _, err := os.Stat(dst); err == nil {
-		// Destination exists, symlink
-		if err := os.RemoveAll(src); err != nil {
-			return fmt.Errorf("failed to remove source dir %s: %w", src, err)
+		// Destination exists. Keep a .bak copy instead of deleting
+		// (trash > rm per project convention).
+		bakPath := src + ".bak"
+		if err := os.Rename(src, bakPath); err != nil {
+			return fmt.Errorf("failed to back up source dir %s: %w", src, err)
 		}
 		if err := os.Symlink(dst, src); err != nil {
+			// Restore backup on symlink failure
+			os.Rename(bakPath, src)
 			return fmt.Errorf("failed to create symlink %s -> %s: %w", src, dst, err)
 		}
 		return nil
