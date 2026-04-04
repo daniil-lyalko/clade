@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"time"
 
 	"github.com/daniil-lyalko/clade/internal/session"
 	"github.com/daniil-lyalko/clade/internal/ui"
@@ -71,6 +72,18 @@ func runSessions(cmd *cobra.Command, args []string) error {
 	sessions, err := reg.List()
 	if err != nil {
 		return fmt.Errorf("failed to list sessions: %w", err)
+	}
+
+	// Self-heal: mark "active" sessions that haven't been updated in 30min as stopped.
+	// This catches subagents and crashed sessions whose Stop hook never fired.
+	for _, sess := range sessions {
+		if sess.Status == session.StatusActive && time.Since(sess.LastActive) > 30*time.Minute {
+			sess.Status = session.StatusStopped
+			if sess.Summary == "" {
+				sess.Summary = "(no stop hook fired)"
+			}
+			reg.Save(sess)
+		}
 	}
 
 	// Filter active-only

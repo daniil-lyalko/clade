@@ -42,9 +42,25 @@ func runSessionStart(cmd *cobra.Command, args []string) error {
 // doSessionStart creates or updates a session entry in the registry.
 // Extracted for testability.
 func doSessionStart(reg *session.Registry, input *stopHookInput) error {
+	// Skip subagent sessions — they're internal workers, not user sessions.
+	// Claude Code sets CLAUDE_AGENT_ID for subagent processes (Agent tool).
+	if os.Getenv("CLAUDE_AGENT_ID") != "" {
+		return nil
+	}
+
 	cwd := input.CWD
 	if cwd == "" {
 		cwd, _ = os.Getwd()
+	}
+
+	// Skip if another active session already owns this CWD (likely a subagent
+	// that inherited the parent's working directory).
+	if sessions, err := reg.List(); err == nil {
+		for _, s := range sessions {
+			if s.Status == session.StatusActive && s.CWD == cwd && s.SessionID != input.SessionID {
+				return nil
+			}
+		}
 	}
 
 	project := detectProjectName(cwd)
