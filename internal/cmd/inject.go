@@ -11,6 +11,7 @@ import (
 
 	"github.com/daniil-lyalko/clade/internal/context"
 	"github.com/daniil-lyalko/clade/internal/git"
+	"github.com/daniil-lyalko/clade/internal/session"
 	"github.com/spf13/cobra"
 )
 
@@ -90,6 +91,32 @@ func runInjectContext(cmd *cobra.Command, args []string) error {
 		output = hookWarnings + "\n\n" + output
 	}
 
+	// Scan inbox for cross-session updates
+	baseDir := cladeBaseDir()
+	inbox := session.NewInbox(baseDir)
+
+	// Read all recent entries (offset tracking per-session is a future optimization)
+	var inboxOffset int64
+	entries, _, err := inbox.ReadRecent(inboxOffset)
+	if err == nil && len(entries) > 0 {
+		inboxSection := formatInboxContext(entries)
+		if inboxSection != "" {
+			output = output + "\n" + inboxSection
+		}
+	}
+
+	// Read session dropbag from ~/.clade/sessions/{session_id}.md
+	reg := session.NewRegistry(baseDir)
+	if sessionID := os.Getenv("CLAUDE_SESSION_ID"); sessionID != "" {
+		dropbagPath := reg.DropbagPath(sessionID)
+		if data, err := os.ReadFile(dropbagPath); err == nil {
+			content := strings.TrimSpace(string(data))
+			if content != "" {
+				output = "## Session Context (from previous session)\n\n" + content + "\n\n" + output
+			}
+		}
+	}
+
 	// Auto-detect output format:
 	// - Claude Code sets CLAUDE_PROJECT_DIR → plain text to stdout
 	// - Cursor does not set CLAUDE_PROJECT_DIR → JSON with additional_context
@@ -152,6 +179,28 @@ func wasRecentlyInjected(dir string) bool {
 func markInjected(dir string) {
 	// Security: Use restrictive permissions (owner-only)
 	os.WriteFile(dedupPath(dir), []byte("1"), 0600)
+}
+
+// formatInboxContext formats inbox entries for injection into session context.
+func formatInboxContext(entries []*session.InboxEntry) string {
+	if len(entries) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("## Cross-session updates\n\n")
+	sb.WriteString("_Recent activity from other Claude Code sessions:_\n\n")
+
+	for _, e := range entries {
+		timeStr := ""
+		if !e.Time.IsZero() {
+			timeStr = e.Time.Format("3:04 PM")
+		}
+		sb.WriteString(fmt.Sprintf("- **[%s]** %s (%s): %s\n", e.EntryType, e.Project, timeStr, e.Message))
+	}
+	sb.WriteString("\n")
+
+	return sb.String()
 }
 
 // checkHookFailures reads .clade/last-hook-results.json and returns warnings for failed hooks.
