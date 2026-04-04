@@ -286,6 +286,26 @@ func ArchiveDir() string {
 	return filepath.Join(homeDir, ".config", "clade", "archive")
 }
 
+// DotCladeDir returns the path to ~/.clade/ — the unified Clade data directory.
+// This is the new canonical location for all Clade state (v0.8+).
+func DotCladeDir() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(os.TempDir(), ".clade")
+	}
+	return filepath.Join(homeDir, ".clade")
+}
+
+// SessionsDir returns the path to ~/.clade/sessions/
+func SessionsDir() string {
+	return filepath.Join(DotCladeDir(), "sessions")
+}
+
+// InboxDir returns the path to ~/.clade/inbox/
+func InboxDir() string {
+	return filepath.Join(DotCladeDir(), "inbox")
+}
+
 // GetRepoCopyFiles returns the copy_files setting for a repo
 func (c *Config) GetRepoCopyFiles(repoPath string) []string {
 	if settings, ok := c.RepoSettings[repoPath]; ok {

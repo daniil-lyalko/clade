@@ -283,6 +283,24 @@ func TestConfigRoundTrip(t *testing.T) {
 	assert.Equal(t, cfg.CustomLabels["perf"].BranchPrefix, loaded.CustomLabels["perf"].BranchPrefix)
 }
 
+func TestDotCladeDir(t *testing.T) {
+	dir := DotCladeDir()
+	homeDir, _ := os.UserHomeDir()
+	assert.Equal(t, filepath.Join(homeDir, ".clade"), dir)
+}
+
+func TestDotCladeDir_SessionsPath(t *testing.T) {
+	dir := DotCladeDir()
+	sessionsDir := filepath.Join(dir, "sessions")
+	assert.Contains(t, sessionsDir, ".clade/sessions")
+}
+
+func TestDotCladeDir_InboxPath(t *testing.T) {
+	dir := DotCladeDir()
+	inboxDir := filepath.Join(dir, "inbox")
+	assert.Contains(t, inboxDir, ".clade/inbox")
+}
+
 func TestFilePermissions_DirectCheck(t *testing.T) {
 	// Direct test of file permissions using os.WriteFile
 	// This verifies the fix is actually applied
