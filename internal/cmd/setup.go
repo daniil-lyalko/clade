@@ -177,9 +177,7 @@ func planClaudeHookActions(path string, force bool) []setupAction {
 		{"SessionStart hook (inject-context)", "clade inject-context", "pacer inject-context"},
 		{"SessionStart hook (session-start)", "command -v clade >/dev/null 2>&1 && clade session-start || true", ""},
 		{"Stop hook (session-stop)", "command -v clade >/dev/null 2>&1 && clade session-stop || true", ""},
-		{"Stop hook (auto-dropbag)", "command -v clade >/dev/null 2>&1 && clade auto-dropbag || true", ""},
 		{"PreCompact hook (session-compact)", "command -v clade >/dev/null 2>&1 && clade session-compact || true", ""},
-		{"PreCompact hook (auto-dropbag)", "command -v clade >/dev/null 2>&1 && clade auto-dropbag || true", ""},
 		{"PreCompact hook (context-warning)", "clade context-warning", ""},
 	}
 
@@ -412,17 +410,11 @@ func mergeClaudeSettingsHooks(path string, force bool) (bool, error) {
 	const sessionStopCmd = "command -v clade >/dev/null 2>&1 && clade session-stop || true"
 	mergeHookArray(hooksObj, "Stop", sessionStopCmd)
 
-	// Stop hook (auto-dropbag) — parses session transcript for meaningful context
-	const stopCommand = "command -v clade >/dev/null 2>&1 && clade auto-dropbag || true"
-	mergeHookArray(hooksObj, "Stop", stopCommand)
-
 	// PreCompact hook: session-compact
 	const sessionCompactCmd = "command -v clade >/dev/null 2>&1 && clade session-compact || true"
 	mergeHookArray(hooksObj, "PreCompact", sessionCompactCmd)
 
-	// PreCompact hooks: auto-dropbag + context-warning
-	const preCompactDropbag = "command -v clade >/dev/null 2>&1 && clade auto-dropbag || true"
-	mergeHookArray(hooksObj, "PreCompact", preCompactDropbag)
+	// PreCompact hook: context-warning
 	mergeHookArray(hooksObj, "PreCompact", "clade context-warning")
 
 	hooksJSON, err := json.Marshal(hooksObj)
@@ -562,8 +554,8 @@ write:
 	}
 	hooksObj["sessionStart"] = sessionStartJSON
 
-	// Add stop hook for auto-dropbag (Cursor uses camelCase: "stop")
-	const stopCommand = "command -v clade >/dev/null 2>&1 && clade auto-dropbag || true"
+	// Add stop hook for session-stop (Cursor uses camelCase: "stop")
+	const stopCommand = "command -v clade >/dev/null 2>&1 && clade session-stop || true"
 	var stopHooks []cursorHookEntry
 	if raw, ok := hooksObj["stop"]; ok {
 		_ = json.Unmarshal(raw, &stopHooks)

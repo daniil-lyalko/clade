@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/daniil-lyalko/clade/internal/ui"
 )
@@ -29,6 +31,12 @@ func runMigrateDotClade() error {
 
 	if err := doMigrateToDotClade(homeDir, oldConfigDir, oldBaseDir, newDir); err != nil {
 		return err
+	}
+
+	// Clean up blocking auto-dropbag hooks from settings
+	settingsPath := filepath.Join(homeDir, ".claude", "settings.json")
+	if removed := removeAutoDropbagHooks(settingsPath); removed > 0 {
+		ui.Detail(fmt.Sprintf("Removed %d blocking auto-dropbag hooks from settings", removed))
 	}
 
 	ui.Success("Migration complete!")
@@ -75,6 +83,67 @@ func doMigrateToDotClade(homeDir, oldConfigDir, oldBaseDir, newDir string) error
 	}
 
 	return nil
+}
+
+// removeAutoDropbagHooks strips standalone auto-dropbag hooks from Claude settings.
+// These were registered by clade v0.7 and block session exit. In v0.8, session-stop
+// handles transcript processing via non-blocking triage.
+// Returns the number of hooks removed.
+func removeAutoDropbagHooks(settingsPath string) int {
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return 0
+	}
+
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(data, &root); err != nil {
+		return 0
+	}
+
+	hooksRaw, ok := root["hooks"]
+	if !ok {
+		return 0
+	}
+
+	var hooks map[string]json.RawMessage
+	if err := json.Unmarshal(hooksRaw, &hooks); err != nil {
+		return 0
+	}
+
+	removed := 0
+	for event, hookArrayRaw := range hooks {
+		var hookArray []json.RawMessage
+		if err := json.Unmarshal(hookArrayRaw, &hookArray); err != nil {
+			continue
+		}
+
+		var filtered []json.RawMessage
+		for _, h := range hookArray {
+			if strings.Contains(string(h), "auto-dropbag") {
+				removed++
+				continue
+			}
+			filtered = append(filtered, h)
+		}
+
+		if len(filtered) != len(hookArray) {
+			if len(filtered) == 0 {
+				delete(hooks, event)
+			} else {
+				updated, _ := json.Marshal(filtered)
+				hooks[event] = updated
+			}
+		}
+	}
+
+	if removed > 0 {
+		hooksJSON, _ := json.Marshal(hooks)
+		root["hooks"] = hooksJSON
+		output, _ := json.MarshalIndent(root, "", "  ")
+		os.WriteFile(settingsPath, output, 0600)
+	}
+
+	return removed
 }
 
 // migrateSingleFile moves src to dst, then creates a symlink at src pointing to dst.
