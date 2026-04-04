@@ -128,7 +128,7 @@ func formatSessionsDashboard(w io.Writer, sessions []*session.Session) {
 	// Sort head sessions first
 	sortedSessions := make([]*session.Session, 0, len(sessions))
 	for _, s := range sessions {
-		if s.SessionID == "head" {
+		if s.Project == "head" {
 			sortedSessions = append([]*session.Session{s}, sortedSessions...)
 		} else {
 			sortedSessions = append(sortedSessions, s)
@@ -156,10 +156,10 @@ func formatSessionsDashboard(w io.Writer, sessions []*session.Session) {
 			statusColor = ui.Yellow(fmt.Sprintf("● %s", status))
 		}
 
-		// Add [HEAD] label for the orchestrator session
+		// Add [HEAD] label for orchestrator sessions
 		project := s.Project
-		if s.SessionID == "head" {
-			project = ui.Magenta("[HEAD]") + " " + project
+		if s.Project == "head" {
+			project = ui.Magenta("[HEAD]") + " " + s.SessionID
 		}
 
 		fmt.Fprintf(w, "  %-4s %-12s %-18s %-6s %s\n",

@@ -10,21 +10,30 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var headStopNameFlag string
+
 var headStopCmd = &cobra.Command{
 	Use:   "stop",
 	Short: "Gracefully stop the head session",
 	RunE:  runHeadStop,
 }
 
+func init() {
+	headStopCmd.Flags().StringVar(&headStopNameFlag, "name", "head", "Name of the head session to stop")
+}
+
 func runHeadStop(cmd *cobra.Command, args []string) error {
-	if !isHeadRunning() {
-		ui.Info("Head session is not running")
+	name := headStopNameFlag
+	tmuxSession := headTmuxSessionName(name)
+
+	if !isHeadRunningByName(tmuxSession) {
+		ui.Info("Head session '%s' is not running", name)
 		return nil
 	}
 
 	// Send Ctrl-C for graceful shutdown
-	ui.Info("Stopping head session...")
-	sendKeys := exec.Command("tmux", "send-keys", "-t", headTmuxSession, "C-c", "")
+	ui.Info("Stopping head session '%s'...", name)
+	sendKeys := exec.Command("tmux", "send-keys", "-t", tmuxSession, "C-c", "")
 	if err := sendKeys.Run(); err != nil {
 		ui.Warn("Failed to send interrupt signal: %v", err)
 	}
@@ -32,16 +41,16 @@ func runHeadStop(cmd *cobra.Command, args []string) error {
 	// Wait up to 10s for graceful shutdown
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		if !isHeadRunning() {
+		if !isHeadRunningByName(tmuxSession) {
 			break
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
 
 	// Force kill if still running
-	if isHeadRunning() {
+	if isHeadRunningByName(tmuxSession) {
 		ui.Warn("Graceful shutdown timed out, killing session...")
-		killCmd := exec.Command("tmux", "kill-session", "-t", headTmuxSession)
+		killCmd := exec.Command("tmux", "kill-session", "-t", tmuxSession)
 		if err := killCmd.Run(); err != nil {
 			return fmt.Errorf("failed to kill head session: %w", err)
 		}
@@ -49,7 +58,7 @@ func runHeadStop(cmd *cobra.Command, args []string) error {
 
 	// Update session registry
 	reg := session.NewRegistry(cladeBaseDir())
-	if sess, err := reg.Get("head"); err == nil {
+	if sess, err := reg.Get(name); err == nil {
 		sess.Status = session.StatusStopped
 		sess.LastActive = time.Now()
 		if err := reg.Save(sess); err != nil {
@@ -57,6 +66,6 @@ func runHeadStop(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	ui.Success("Head session stopped")
+	ui.Success("Head session '%s' stopped", name)
 	return nil
 }

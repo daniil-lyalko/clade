@@ -7,17 +7,26 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var headAttachNameFlag string
+
 var headAttachCmd = &cobra.Command{
 	Use:   "attach",
 	Short: "Attach to the head tmux session",
 	RunE:  runHeadAttach,
 }
 
+func init() {
+	headAttachCmd.Flags().StringVar(&headAttachNameFlag, "name", "head", "Name of the head session to attach to")
+}
+
 func runHeadAttach(cmd *cobra.Command, args []string) error {
-	if !isHeadRunning() {
-		ui.Error("Head session is not running")
-		return fmt.Errorf("start it with: clade head start")
+	name := headAttachNameFlag
+	tmuxSession := headTmuxSessionName(name)
+
+	if !isHeadRunningByName(tmuxSession) {
+		ui.Error("Head session '%s' is not running", name)
+		return fmt.Errorf("start it with: clade head start --name %s", name)
 	}
 
-	return attachToHead()
+	return attachToHeadByName(tmuxSession)
 }

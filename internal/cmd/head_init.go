@@ -41,6 +41,8 @@ You are the orchestrator for this machine's Claude Code sessions.
 On each context refresh, check ~/.clade/inbox/ for updates from other sessions.
 When spawning sessions, use ` + "`clade start <repo> --ticket <id>`" + ` so they're tracked.
 When sessions complete, their summaries appear in the inbox automatically.
+
+Note: ` + "`clade start`" + ` spawns worktree coding sessions, while ` + "`clade head`" + ` manages this orchestrator session.
 `
 
 func runHeadInit(cmd *cobra.Command, args []string) error {

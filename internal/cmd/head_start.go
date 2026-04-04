@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/daniil-lyalko/clade/internal/session"
@@ -14,22 +15,29 @@ import (
 var (
 	headStartAttachFlag  bool
 	headStartChannelFlag string
+	headStartNameFlag    string
 )
 
-const headTmuxSession = "clade-head"
+// headTmuxSessionName returns the tmux session name for the given head name.
+func headTmuxSessionName(name string) string {
+	return "clade-" + name
+}
 
 var headStartCmd = &cobra.Command{
 	Use:   "start",
-	Short: "Launch claude --remote-control in a tmux session",
+	Short: "Launch claude --remote in a tmux session",
 	RunE:  runHeadStart,
 }
 
 func init() {
 	headStartCmd.Flags().BoolVar(&headStartAttachFlag, "attach", false, "Attach to tmux after starting")
 	headStartCmd.Flags().StringVar(&headStartChannelFlag, "channel", "", "Channel plugin name to pass to claude")
+	headStartCmd.Flags().StringVar(&headStartNameFlag, "name", "head", "Name for the head session (tmux session: clade-{name})")
 }
 
 func runHeadStart(cmd *cobra.Command, args []string) error {
+	name := headStartNameFlag
+	tmuxSession := headTmuxSessionName(name)
 	headDir := headDirectory()
 
 	// Check head is initialized
@@ -38,24 +46,27 @@ func runHeadStart(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if already running
-	if isHeadRunning() {
-		ui.Info("Head session is already running")
-		ui.Detail("Attach with: clade head attach")
+	if isHeadRunningByName(tmuxSession) {
+		ui.Info("Head session '%s' is already running", name)
+		ui.Detail("Attach with: clade head attach --name %s", name)
 		if headStartAttachFlag {
-			return attachToHead()
+			return attachToHeadByName(tmuxSession)
 		}
 		return nil
 	}
 
 	// Build claude command
-	claudeCmd := "claude --remote-control"
+	claudeCmd := "claude --remote"
 	if headStartChannelFlag != "" {
 		claudeCmd += fmt.Sprintf(" --channels plugin:%s@claude-plugins-official", headStartChannelFlag)
 	}
 
+	// Quote headDir for safe shell interpolation (single quotes, escape internal single quotes)
+	quotedDir := "'" + strings.ReplaceAll(headDir, "'", "'\"'\"'") + "'"
+
 	// Start tmux session
-	tmuxCmd := exec.Command("tmux", "new-session", "-d", "-s", headTmuxSession,
-		fmt.Sprintf("cd %s && %s", headDir, claudeCmd))
+	tmuxCmd := exec.Command("tmux", "new-session", "-d", "-s", tmuxSession,
+		fmt.Sprintf("cd %s && %s", quotedDir, claudeCmd))
 	if err := tmuxCmd.Run(); err != nil {
 		return fmt.Errorf("failed to start head session: %w (is tmux installed?)", err)
 	}
@@ -63,39 +74,49 @@ func runHeadStart(cmd *cobra.Command, args []string) error {
 	// Register in session registry
 	reg := session.NewRegistry(cladeBaseDir())
 	sess := &session.Session{
-		SessionID:  "head",
+		SessionID:  name,
 		Project:    "head",
 		CWD:        headDir,
 		Started:    time.Now(),
 		LastActive: time.Now(),
 		Status:     session.StatusActive,
-		Summary:    "Orchestrator session",
+		Summary:    fmt.Sprintf("Orchestrator session (%s)", name),
 	}
 	if err := reg.Save(sess); err != nil {
 		ui.Warn("Failed to register head session: %v", err)
 	}
 
-	ui.Success("Head session started")
-	ui.Detail("Attach: clade head attach")
-	ui.Detail("Stop:   clade head stop")
-	ui.Detail("Status: clade head status")
+	ui.Success("Head session '%s' started", name)
+	ui.Detail("Attach: clade head attach --name %s", name)
+	ui.Detail("Stop:   clade head stop --name %s", name)
+	ui.Detail("Status: clade head status --name %s", name)
 
 	if headStartAttachFlag {
-		return attachToHead()
+		return attachToHeadByName(tmuxSession)
 	}
 
 	return nil
 }
 
-// isHeadRunning checks if the clade-head tmux session exists.
+// isHeadRunning checks if the default clade-head tmux session exists.
 func isHeadRunning() bool {
-	cmd := exec.Command("tmux", "has-session", "-t", headTmuxSession)
+	return isHeadRunningByName(headTmuxSessionName("head"))
+}
+
+// isHeadRunningByName checks if a tmux session with the given name exists.
+func isHeadRunningByName(tmuxSession string) bool {
+	cmd := exec.Command("tmux", "has-session", "-t", tmuxSession)
 	return cmd.Run() == nil
 }
 
-// attachToHead attaches to the head tmux session.
+// attachToHead attaches to the default head tmux session.
 func attachToHead() error {
-	cmd := exec.Command("tmux", "attach", "-t", headTmuxSession)
+	return attachToHeadByName(headTmuxSessionName("head"))
+}
+
+// attachToHeadByName attaches to a tmux session by name.
+func attachToHeadByName(tmuxSession string) error {
+	cmd := exec.Command("tmux", "attach", "-t", tmuxSession)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

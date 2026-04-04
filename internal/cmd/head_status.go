@@ -11,13 +11,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var headStatusNameFlag string
+
 var headStatusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show running state and info",
 	RunE:  runHeadStatus,
 }
 
+func init() {
+	headStatusCmd.Flags().StringVar(&headStatusNameFlag, "name", "head", "Name of the head session to check")
+}
+
 func runHeadStatus(cmd *cobra.Command, args []string) error {
+	name := headStatusNameFlag
+	tmuxSession := headTmuxSessionName(name)
 	headDir := headDirectory()
 
 	// Check initialization
@@ -26,9 +34,10 @@ func runHeadStatus(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	running := isHeadRunning()
+	running := isHeadRunningByName(tmuxSession)
 
 	fmt.Println()
+	ui.KeyValue("Name", name)
 	if running {
 		ui.KeyValue("Status", ui.Green("running"))
 	} else {
@@ -37,7 +46,7 @@ func runHeadStatus(cmd *cobra.Command, args []string) error {
 
 	// Show session info from registry
 	reg := session.NewRegistry(cladeBaseDir())
-	if sess, err := reg.Get("head"); err == nil {
+	if sess, err := reg.Get(name); err == nil {
 		if running {
 			uptime := time.Since(sess.Started)
 			ui.KeyValue("Uptime", formatDurationHuman(uptime))

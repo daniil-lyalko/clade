@@ -183,6 +183,38 @@ func TestSessionsDashboard_ShowsHEADLabel(t *testing.T) {
 	assert.True(t, headIdx < apiIdx, "HEAD session should appear before other sessions")
 }
 
+func TestSessionsDashboard_ShowsNamedHEADLabel(t *testing.T) {
+	sessions := []*session.Session{
+		{
+			SessionID:  "sess-1",
+			Project:    "my-api",
+			Status:     session.StatusActive,
+			LastActive: time.Now(),
+			Summary:    "Working on API",
+		},
+		{
+			SessionID:  "gru",
+			Project:    "head",
+			Status:     session.StatusActive,
+			LastActive: time.Now(),
+			Summary:    "Orchestrator session (gru)",
+		},
+	}
+
+	var buf bytes.Buffer
+	formatSessionsDashboard(&buf, sessions)
+	output := buf.String()
+
+	// Named head session should show [HEAD] label with session name
+	assert.Contains(t, output, "[HEAD]")
+	assert.Contains(t, output, "gru")
+
+	// HEAD should appear before other sessions
+	headIdx := indexOf(output, "[HEAD]")
+	apiIdx := indexOf(output, "my-api")
+	assert.True(t, headIdx < apiIdx, "HEAD session should appear before other sessions")
+}
+
 func indexOf(s, substr string) int {
 	for i := 0; i <= len(s)-len(substr); i++ {
 		if s[i:i+len(substr)] == substr {
