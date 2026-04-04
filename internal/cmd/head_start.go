@@ -25,7 +25,7 @@ var headStartCmd = &cobra.Command{
 }
 
 func init() {
-	headStartCmd.Flags().BoolVarP(&headStartAttachFlag, "attach", "a", false, "Attach to tmux after starting")
+	headStartCmd.Flags().BoolVar(&headStartAttachFlag, "attach", false, "Attach to tmux after starting")
 	headStartCmd.Flags().StringVar(&headStartChannelFlag, "channel", "", "Channel plugin name to pass to claude")
 }
 
