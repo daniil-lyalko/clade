@@ -125,7 +125,17 @@ func formatSessionsDashboard(w io.Writer, sessions []*session.Session) {
 	fmt.Fprintf(w, "  %-4s %-12s %-18s %-6s %s\n",
 		"", "STATUS", "PROJECT", "AGE", "DOING")
 
-	for i, s := range sessions {
+	// Sort head sessions first
+	sortedSessions := make([]*session.Session, 0, len(sessions))
+	for _, s := range sessions {
+		if s.SessionID == "head" {
+			sortedSessions = append([]*session.Session{s}, sortedSessions...)
+		} else {
+			sortedSessions = append(sortedSessions, s)
+		}
+	}
+
+	for i, s := range sortedSessions {
 		num := fmt.Sprintf("%d", i+1)
 		status := s.StatusLabel()
 		age := formatAgeShort(s.LastActive)
@@ -146,8 +156,14 @@ func formatSessionsDashboard(w io.Writer, sessions []*session.Session) {
 			statusColor = ui.Yellow(fmt.Sprintf("● %s", status))
 		}
 
+		// Add [HEAD] label for the orchestrator session
+		project := s.Project
+		if s.SessionID == "head" {
+			project = ui.Magenta("[HEAD]") + " " + project
+		}
+
 		fmt.Fprintf(w, "  %-4s %-12s %-18s %-6s %s\n",
-			num, statusColor, s.Project, ui.Dim(age), summary)
+			num, statusColor, project, ui.Dim(age), summary)
 	}
 
 	active, idle, stale := countSessionsByStatus(sessions)
