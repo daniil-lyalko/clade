@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/daniil-lyalko/clade/internal/config"
 	"github.com/daniil-lyalko/clade/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -95,5 +96,5 @@ func doHeadInit(headDir, brainPath string) error {
 
 // headDirectory returns the path to ~/.clade/head/
 func headDirectory() string {
-	return filepath.Join(cladeBaseDir(), "head")
+	return filepath.Join(config.DotCladeDir(), "head")
 }

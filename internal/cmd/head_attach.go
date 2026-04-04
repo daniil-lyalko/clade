@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/daniil-lyalko/clade/internal/session"
 	"github.com/daniil-lyalko/clade/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -16,7 +17,7 @@ var headAttachCmd = &cobra.Command{
 }
 
 func init() {
-	headAttachCmd.Flags().StringVar(&headAttachNameFlag, "name", "head", "Name of the head session to attach to")
+	headAttachCmd.Flags().StringVar(&headAttachNameFlag, "name", session.HeadSessionID, "Name of the head session to attach to")
 }
 
 func runHeadAttach(cmd *cobra.Command, args []string) error {

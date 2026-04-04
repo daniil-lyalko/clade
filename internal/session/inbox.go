@@ -31,6 +31,12 @@ func (ib *Inbox) yesterdayFile() string {
 	return filepath.Join(ib.inboxDir(), time.Now().AddDate(0, 0, -1).Format("2006-01-02")+".md")
 }
 
+// RecentFilePaths returns the paths to today's and yesterday's inbox files.
+// The files may or may not exist on disk.
+func (ib *Inbox) RecentFilePaths() []string {
+	return []string{ib.todayFile(), ib.yesterdayFile()}
+}
+
 func FormatInboxEntry(entry *InboxEntry) string {
 	timeStr := entry.Time.Format("3:04 PM")
 	return fmt.Sprintf("\n### %s | %s | %s\n%s\n", timeStr, entry.Project, entry.EntryType, entry.Message)
@@ -98,6 +104,16 @@ func (ib *Inbox) readFile(path string, offset int64) ([]*InboxEntry, error) {
 			return nil, err
 		}
 	}
+
+	// Extract the date from the filename (YYYY-MM-DD.md) so that parsed
+	// entry times use the correct date rather than today's date.
+	fileDate := time.Now()
+	base := filepath.Base(path)
+	datePart := strings.TrimSuffix(base, ".md")
+	if parsed, err := time.ParseInLocation("2006-01-02", datePart, time.Local); err == nil {
+		fileDate = parsed
+	}
+
 	var entries []*InboxEntry
 	var current *InboxEntry
 	scanner := bufio.NewScanner(f)
@@ -114,8 +130,7 @@ func (ib *Inbox) readFile(path string, offset int64) ([]*InboxEntry, error) {
 				Message:   "",
 			}
 			if t, err := time.Parse("3:04 PM", strings.TrimSpace(matches[1])); err == nil {
-				now := time.Now()
-				current.Time = time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), 0, 0, time.Local)
+				current.Time = time.Date(fileDate.Year(), fileDate.Month(), fileDate.Day(), t.Hour(), t.Minute(), 0, 0, time.Local)
 			}
 			continue
 		}

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/daniil-lyalko/clade/internal/config"
 	"github.com/daniil-lyalko/clade/internal/context"
 	"github.com/daniil-lyalko/clade/internal/git"
 	"github.com/daniil-lyalko/clade/internal/session"
@@ -92,7 +93,7 @@ func runInjectContext(cmd *cobra.Command, args []string) error {
 	}
 
 	// Scan inbox for cross-session updates
-	baseDir := cladeBaseDir()
+	baseDir := config.DotCladeDir()
 	inbox := session.NewInbox(baseDir)
 
 	// Read all recent entries (offset tracking per-session is a future optimization)

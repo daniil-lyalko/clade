@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/daniil-lyalko/clade/internal/config"
 	"github.com/daniil-lyalko/clade/internal/session"
 	"github.com/daniil-lyalko/clade/internal/transcript"
 	"github.com/spf13/cobra"
@@ -38,7 +40,7 @@ func runSessionStopAsync(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	baseDir := cladeBaseDir()
+	baseDir := config.DotCladeDir()
 	reg := session.NewRegistry(baseDir)
 	inbox := session.NewInbox(baseDir)
 
@@ -65,8 +67,11 @@ func doSessionStopAsync(reg *session.Registry, inbox *session.Inbox, input *stop
 
 			// 3. Write session dropbag to ~/.clade/sessions/{session_id}.md
 			dropbagPath := reg.DropbagPath(input.SessionID)
-			os.MkdirAll(filepath.Dir(dropbagPath), 0755)
-			os.WriteFile(dropbagPath, []byte(content), 0644)
+			if err := os.MkdirAll(filepath.Dir(dropbagPath), 0755); err != nil {
+				fmt.Fprintf(os.Stderr, "clade: failed to create dropbag dir: %v\n", err)
+			} else if err := os.WriteFile(dropbagPath, []byte(content), 0644); err != nil {
+				fmt.Fprintf(os.Stderr, "clade: failed to write dropbag: %v\n", err)
+			}
 
 			// Build summary from extract
 			if extract.UserIntent != "" {

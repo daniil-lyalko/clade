@@ -126,3 +126,59 @@ func TestRegistry_Delete(t *testing.T) {
 	_, err = reg.Get("delete-me")
 	assert.Error(t, err)
 }
+
+func TestSanitizeID(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{name: "simple id", input: "session-123", want: "session-123"},
+		{name: "slashes replaced", input: "path/to/session", want: "path_to_session"},
+		{name: "backslashes replaced", input: "path\\to\\session", want: "path_to_session"},
+		{name: "null bytes stripped", input: "ses\x00sion", want: "session"},
+		{name: "dot-dot replaced", input: "../../../etc/passwd", want: "______etc_passwd"},
+		{name: "empty string", input: "", want: "", wantErr: true},
+		{name: "only dots", input: "..", want: "_", wantErr: false},
+		{name: "long id truncated", input: string(make([]byte, 300)), want: string(make([]byte, 255))},
+		{name: "mixed traversal", input: "foo/../bar", want: "foo___bar"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// For the "long id truncated" case, fill with 'a' chars
+			if tt.name == "long id truncated" {
+				longID := make([]byte, 300)
+				for i := range longID {
+					longID[i] = 'a'
+				}
+				tt.input = string(longID)
+				tt.want = string(longID[:maxIDLength])
+			}
+
+			got, err := sanitizeID(tt.input)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+			assert.LessOrEqual(t, len(got), maxIDLength)
+		})
+	}
+}
+
+func TestSanitizeID_NoPathTraversal(t *testing.T) {
+	// Ensure sanitized IDs cannot escape the sessions directory
+	dangerous := []string{"../secret", "..\\secret", "foo/../../bar", "....//test"}
+	for _, id := range dangerous {
+		sanitized, err := sanitizeID(id)
+		if err != nil {
+			continue // empty after sanitization is also safe
+		}
+		assert.NotContains(t, sanitized, "..")
+		assert.NotContains(t, sanitized, "/")
+		assert.NotContains(t, sanitized, "\\")
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/daniil-lyalko/clade/internal/config"
 	"github.com/daniil-lyalko/clade/internal/session"
 	"github.com/spf13/cobra"
 )
@@ -33,7 +34,7 @@ func runSessionStart(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	baseDir := cladeBaseDir()
+	baseDir := config.DotCladeDir()
 	reg := session.NewRegistry(baseDir)
 
 	return doSessionStart(reg, input)
@@ -150,11 +151,3 @@ func detectWorktree(cwd string) (bool, string) {
 	return false, ""
 }
 
-// cladeBaseDir returns the base directory for Clade data (~/.clade/).
-func cladeBaseDir() string {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return filepath.Join(os.TempDir(), ".clade")
-	}
-	return filepath.Join(homeDir, ".clade")
-}

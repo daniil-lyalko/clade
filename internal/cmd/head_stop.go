@@ -5,10 +5,13 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/daniil-lyalko/clade/internal/config"
 	"github.com/daniil-lyalko/clade/internal/session"
 	"github.com/daniil-lyalko/clade/internal/ui"
 	"github.com/spf13/cobra"
 )
+
+const gracefulShutdownTimeout = 10 * time.Second
 
 var headStopNameFlag string
 
@@ -19,7 +22,7 @@ var headStopCmd = &cobra.Command{
 }
 
 func init() {
-	headStopCmd.Flags().StringVar(&headStopNameFlag, "name", "head", "Name of the head session to stop")
+	headStopCmd.Flags().StringVar(&headStopNameFlag, "name", session.HeadSessionID, "Name of the head session to stop")
 }
 
 func runHeadStop(cmd *cobra.Command, args []string) error {
@@ -39,7 +42,7 @@ func runHeadStop(cmd *cobra.Command, args []string) error {
 	}
 
 	// Wait up to 10s for graceful shutdown
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(gracefulShutdownTimeout)
 	for time.Now().Before(deadline) {
 		if !isHeadRunningByName(tmuxSession) {
 			break
@@ -57,7 +60,7 @@ func runHeadStop(cmd *cobra.Command, args []string) error {
 	}
 
 	// Update session registry
-	reg := session.NewRegistry(cladeBaseDir())
+	reg := session.NewRegistry(config.DotCladeDir())
 	if sess, err := reg.Get(name); err == nil {
 		sess.Status = session.StatusStopped
 		sess.LastActive = time.Now()

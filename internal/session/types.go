@@ -13,6 +13,10 @@ const (
 	StatusStopping SessionStatus = "stopping"
 )
 
+// HeadSessionID is the canonical session ID / project name used for the
+// persistent orchestrator ("head") session.
+const HeadSessionID = "head"
+
 type Session struct {
 	SessionID       string        `json:"session_id"`
 	Project         string        `json:"project"`

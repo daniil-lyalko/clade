@@ -3,6 +3,7 @@ package cmd
 import (
 	"time"
 
+	"github.com/daniil-lyalko/clade/internal/config"
 	"github.com/daniil-lyalko/clade/internal/session"
 	"github.com/spf13/cobra"
 )
@@ -28,7 +29,7 @@ func runSessionCompact(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	baseDir := cladeBaseDir()
+	baseDir := config.DotCladeDir()
 	reg := session.NewRegistry(baseDir)
 
 	return doSessionCompact(reg, input)

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/daniil-lyalko/clade/internal/config"
 	"github.com/daniil-lyalko/clade/internal/session"
 	"github.com/daniil-lyalko/clade/internal/ui"
 	"github.com/spf13/cobra"
@@ -20,7 +21,7 @@ var headStatusCmd = &cobra.Command{
 }
 
 func init() {
-	headStatusCmd.Flags().StringVar(&headStatusNameFlag, "name", "head", "Name of the head session to check")
+	headStatusCmd.Flags().StringVar(&headStatusNameFlag, "name", session.HeadSessionID, "Name of the head session to check")
 }
 
 func runHeadStatus(cmd *cobra.Command, args []string) error {
@@ -45,7 +46,7 @@ func runHeadStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	// Show session info from registry
-	reg := session.NewRegistry(cladeBaseDir())
+	reg := session.NewRegistry(config.DotCladeDir())
 	if sess, err := reg.Get(name); err == nil {
 		if running {
 			uptime := time.Since(sess.Started)

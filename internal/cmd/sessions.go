@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/daniil-lyalko/clade/internal/config"
 	"github.com/daniil-lyalko/clade/internal/session"
 	"github.com/daniil-lyalko/clade/internal/ui"
 	"github.com/manifoldco/promptui"
@@ -45,7 +46,7 @@ func init() {
 }
 
 func runSessions(cmd *cobra.Command, args []string) error {
-	baseDir := cladeBaseDir()
+	baseDir := config.DotCladeDir()
 	reg := session.NewRegistry(baseDir)
 
 	// Handle --clean
@@ -76,14 +77,19 @@ func runSessions(cmd *cobra.Command, args []string) error {
 
 	// Self-heal: mark "active" sessions that haven't been updated in 30min as stopped.
 	// This catches subagents and crashed sessions whose Stop hook never fired.
+	// Collect sessions to heal first, then save them to avoid mutating during iteration.
+	var toHeal []*session.Session
 	for _, sess := range sessions {
 		if sess.Status == session.StatusActive && time.Since(sess.LastActive) > 30*time.Minute {
 			sess.Status = session.StatusStopped
 			if sess.Summary == "" {
 				sess.Summary = "(no stop hook fired)"
 			}
-			reg.Save(sess)
+			toHeal = append(toHeal, sess)
 		}
+	}
+	for _, sess := range toHeal {
+		reg.Save(sess)
 	}
 
 	// Filter active-only
@@ -128,7 +134,7 @@ func formatSessionsDashboard(w io.Writer, sessions []*session.Session) {
 	// Sort head sessions first
 	sortedSessions := make([]*session.Session, 0, len(sessions))
 	for _, s := range sessions {
-		if s.Project == "head" {
+		if s.Project == session.HeadSessionID {
 			sortedSessions = append([]*session.Session{s}, sortedSessions...)
 		} else {
 			sortedSessions = append(sortedSessions, s)
@@ -158,7 +164,7 @@ func formatSessionsDashboard(w io.Writer, sessions []*session.Session) {
 
 		// Add [HEAD] label for orchestrator sessions
 		project := s.Project
-		if s.Project == "head" {
+		if s.Project == session.HeadSessionID {
 			project = ui.Magenta("[HEAD]") + " " + s.SessionID
 		}
 

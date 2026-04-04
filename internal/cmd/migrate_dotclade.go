@@ -63,23 +63,36 @@ func doMigrateToDotClade(homeDir, oldConfigDir, oldBaseDir, newDir string) error
 	}
 
 	// 2. Move files from ~/.config/clade/ to ~/.clade/
+	var migrationErrors []string
 	if oldConfigDir != "" {
 		configFiles := []string{"config.json", "state.json", "hooks.yaml", "trusted-repos.json"}
 		for _, name := range configFiles {
 			src := filepath.Join(oldConfigDir, name)
 			dst := filepath.Join(newDir, name)
-			migrateSingleFile(src, dst)
+			if err := migrateSingleFile(src, dst); err != nil {
+				migrationErrors = append(migrationErrors, fmt.Sprintf("%s: %v", name, err))
+			}
 		}
 
 		// Move batches/ directory
-		migrateSingleDir(filepath.Join(oldConfigDir, "batches"), filepath.Join(newDir, "batches"))
+		if err := migrateSingleDir(filepath.Join(oldConfigDir, "batches"), filepath.Join(newDir, "batches")); err != nil {
+			migrationErrors = append(migrationErrors, fmt.Sprintf("batches/: %v", err))
+		}
 	}
 
 	// 3. Move repos/ from ~/clade/ to ~/.clade/repos/
 	if oldBaseDir != "" {
-		migrateSingleDir(filepath.Join(oldBaseDir, "repos"), filepath.Join(newDir, "repos"))
+		if err := migrateSingleDir(filepath.Join(oldBaseDir, "repos"), filepath.Join(newDir, "repos")); err != nil {
+			migrationErrors = append(migrationErrors, fmt.Sprintf("repos/: %v", err))
+		}
 		// Also move state.json if it was in old base dir
-		migrateSingleFile(filepath.Join(oldBaseDir, "state.json"), filepath.Join(newDir, "state.json"))
+		if err := migrateSingleFile(filepath.Join(oldBaseDir, "state.json"), filepath.Join(newDir, "state.json")); err != nil {
+			migrationErrors = append(migrationErrors, fmt.Sprintf("state.json: %v", err))
+		}
+	}
+
+	if len(migrationErrors) > 0 {
+		return fmt.Errorf("some files failed to migrate:\n  %s", strings.Join(migrationErrors, "\n  "))
 	}
 
 	return nil
@@ -147,74 +160,93 @@ func removeAutoDropbagHooks(settingsPath string) int {
 }
 
 // migrateSingleFile moves src to dst, then creates a symlink at src pointing to dst.
-// Skips if src doesn't exist or dst already exists.
-func migrateSingleFile(src, dst string) {
+// Skips (returns nil) if src doesn't exist or is already a symlink.
+func migrateSingleFile(src, dst string) error {
 	if _, err := os.Stat(src); os.IsNotExist(err) {
-		return // source doesn't exist
+		return nil // source doesn't exist, nothing to do
 	}
 
 	// Check if src is already a symlink
 	if fi, err := os.Lstat(src); err == nil && fi.Mode()&os.ModeSymlink != 0 {
-		return // already migrated
+		return nil // already migrated
 	}
 
 	if _, err := os.Stat(dst); err == nil {
-		// Destination already exists — just create symlink at source
-		os.Remove(src)
-		os.Symlink(dst, src)
-		return
+		// Destination already exists, create symlink at source
+		if err := os.Remove(src); err != nil {
+			return fmt.Errorf("failed to remove source %s: %w", src, err)
+		}
+		if err := os.Symlink(dst, src); err != nil {
+			return fmt.Errorf("failed to create symlink %s -> %s: %w", src, dst, err)
+		}
+		return nil
 	}
 
 	// Ensure destination directory exists
-	os.MkdirAll(filepath.Dir(dst), 0755)
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return fmt.Errorf("failed to create destination dir for %s: %w", dst, err)
+	}
 
 	// Copy file (don't use Rename across potential filesystem boundaries)
 	data, err := os.ReadFile(src)
 	if err != nil {
-		return
+		return fmt.Errorf("failed to read source %s: %w", src, err)
 	}
 
 	// Preserve original permissions
 	info, err := os.Stat(src)
 	if err != nil {
-		return
+		return fmt.Errorf("failed to stat source %s: %w", src, err)
 	}
 
 	if err := os.WriteFile(dst, data, info.Mode().Perm()); err != nil {
-		return
+		return fmt.Errorf("failed to write destination %s: %w", dst, err)
 	}
 
 	// Replace source with symlink
-	os.Remove(src)
-	os.Symlink(dst, src)
+	if err := os.Remove(src); err != nil {
+		return fmt.Errorf("failed to remove source after copy %s: %w", src, err)
+	}
+	if err := os.Symlink(dst, src); err != nil {
+		return fmt.Errorf("failed to create symlink %s -> %s: %w", src, dst, err)
+	}
+	return nil
 }
 
 // migrateSingleDir moves a directory from src to dst.
-// Skips if src doesn't exist or dst already exists.
-func migrateSingleDir(src, dst string) {
+// Skips (returns nil) if src doesn't exist or is already a symlink.
+func migrateSingleDir(src, dst string) error {
 	if _, err := os.Stat(src); os.IsNotExist(err) {
-		return
+		return nil
 	}
 
 	// Check if src is already a symlink
 	if fi, err := os.Lstat(src); err == nil && fi.Mode()&os.ModeSymlink != 0 {
-		return
+		return nil
 	}
 
 	if _, err := os.Stat(dst); err == nil {
-		// Destination exists — just symlink
-		os.RemoveAll(src)
-		os.Symlink(dst, src)
-		return
+		// Destination exists, symlink
+		if err := os.RemoveAll(src); err != nil {
+			return fmt.Errorf("failed to remove source dir %s: %w", src, err)
+		}
+		if err := os.Symlink(dst, src); err != nil {
+			return fmt.Errorf("failed to create symlink %s -> %s: %w", src, dst, err)
+		}
+		return nil
 	}
 
 	// Move directory
-	os.MkdirAll(filepath.Dir(dst), 0755)
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return fmt.Errorf("failed to create parent dir for %s: %w", dst, err)
+	}
 	if err := os.Rename(src, dst); err != nil {
-		// Rename failed (cross-device) — fall back to leaving in place
-		return
+		return fmt.Errorf("failed to move %s to %s: %w", src, dst, err)
 	}
 
 	// Create symlink at old location
-	os.Symlink(dst, src)
+	if err := os.Symlink(dst, src); err != nil {
+		return fmt.Errorf("failed to create symlink %s -> %s: %w", src, dst, err)
+	}
+	return nil
 }

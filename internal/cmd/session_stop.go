@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/daniil-lyalko/clade/internal/config"
 	"github.com/daniil-lyalko/clade/internal/session"
 	"github.com/spf13/cobra"
 )
@@ -48,7 +49,7 @@ func runSessionStop(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	baseDir := cladeBaseDir()
+	baseDir := config.DotCladeDir()
 	reg := session.NewRegistry(baseDir)
 	inbox := session.NewInbox(baseDir)
 
@@ -179,14 +180,19 @@ func scanTail(reader *bufio.Reader, userMsgs *int, hasEdits *bool, hasCommands *
 	*hasCommands = bashCount > 3
 }
 
-// sessionHasInboxEntries checks if today's inbox file contains entries from this session's project.
+// sessionHasInboxEntries checks if today's or yesterday's inbox file contains
+// entries mentioning this session's project. Uses a simple string search on the
+// raw files instead of parsing all entries, which is much cheaper.
 func sessionHasInboxEntries(inbox *session.Inbox, sess *session.Session) bool {
-	entries, _, err := inbox.ReadRecent(0)
-	if err != nil {
-		return false
-	}
-	for _, e := range entries {
-		if e.Project == sess.Project {
+	// Check today's and yesterday's inbox files with a simple byte search
+	for _, path := range inbox.RecentFilePaths() {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		// Entry headers look like: ### 10:30 AM | project-name | fyi
+		// Searching for "| project-name |" is cheap and specific enough.
+		if strings.Contains(string(data), "| "+sess.Project+" |") {
 			return true
 		}
 	}

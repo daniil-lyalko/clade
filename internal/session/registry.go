@@ -7,7 +7,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 )
+
+// maxIDLength is the maximum allowed length for a session ID.
+const maxIDLength = 255
 
 type Registry struct {
 	baseDir string
@@ -26,23 +30,69 @@ func (r *Registry) archiveDir() string {
 }
 
 func (r *Registry) sessionPath(sessionID string) string {
-	safe := sanitizeID(sessionID)
+	safe, _ := sanitizeID(sessionID)
 	return filepath.Join(r.sessionsDir(), safe+".json")
 }
 
-func (r *Registry) Save(sess *Session) error {
+// lockPath returns the path used for advisory file locking on the sessions directory.
+func (r *Registry) lockPath() string {
+	return filepath.Join(r.sessionsDir(), ".lock")
+}
+
+// withLock acquires an exclusive flock on the sessions directory lock file,
+// runs fn, then releases the lock. This prevents races between concurrent
+// hook invocations (session-start, session-stop, session-compact, async).
+func (r *Registry) withLock(fn func() error) error {
 	if err := os.MkdirAll(r.sessionsDir(), 0755); err != nil {
 		return fmt.Errorf("failed to create sessions dir: %w", err)
 	}
-	data, err := json.MarshalIndent(sess, "", "  ")
+	f, err := os.OpenFile(r.lockPath(), os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
-		return fmt.Errorf("failed to marshal session: %w", err)
+		return fmt.Errorf("failed to open lock file: %w", err)
 	}
-	path := r.sessionPath(sess.SessionID)
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("failed to write session file: %w", err)
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		return fmt.Errorf("failed to acquire registry lock: %w", err)
 	}
-	return nil
+	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	return fn()
+}
+
+func (r *Registry) Save(sess *Session) error {
+	return r.withLock(func() error {
+		if err := os.MkdirAll(r.sessionsDir(), 0755); err != nil {
+			return fmt.Errorf("failed to create sessions dir: %w", err)
+		}
+		data, err := json.MarshalIndent(sess, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal session: %w", err)
+		}
+		path := r.sessionPath(sess.SessionID)
+		// Atomic write: write to temp file, then rename into place.
+		tmp, err := os.CreateTemp(r.sessionsDir(), ".tmp-*.json")
+		if err != nil {
+			return fmt.Errorf("failed to create temp file: %w", err)
+		}
+		tmpName := tmp.Name()
+		if _, err := tmp.Write(data); err != nil {
+			tmp.Close()
+			os.Remove(tmpName)
+			return fmt.Errorf("failed to write temp file: %w", err)
+		}
+		if err := tmp.Close(); err != nil {
+			os.Remove(tmpName)
+			return fmt.Errorf("failed to close temp file: %w", err)
+		}
+		if err := os.Chmod(tmpName, 0600); err != nil {
+			os.Remove(tmpName)
+			return fmt.Errorf("failed to set permissions: %w", err)
+		}
+		if err := os.Rename(tmpName, path); err != nil {
+			os.Remove(tmpName)
+			return fmt.Errorf("failed to rename temp file: %w", err)
+		}
+		return nil
+	})
 }
 
 func (r *Registry) Get(sessionID string) (*Session, error) {
@@ -88,15 +138,18 @@ func (r *Registry) List() ([]*Session, error) {
 }
 
 func (r *Registry) Archive(sessionID string) error {
-	src := r.sessionPath(sessionID)
-	if err := os.MkdirAll(r.archiveDir(), 0755); err != nil {
-		return fmt.Errorf("failed to create archive dir: %w", err)
-	}
-	dst := filepath.Join(r.archiveDir(), sanitizeID(sessionID)+".json")
-	if err := os.Rename(src, dst); err != nil {
-		return fmt.Errorf("failed to archive session %q: %w", sessionID, err)
-	}
-	return nil
+	return r.withLock(func() error {
+		src := r.sessionPath(sessionID)
+		if err := os.MkdirAll(r.archiveDir(), 0755); err != nil {
+			return fmt.Errorf("failed to create archive dir: %w", err)
+		}
+		safe, _ := sanitizeID(sessionID)
+		dst := filepath.Join(r.archiveDir(), safe+".json")
+		if err := os.Rename(src, dst); err != nil {
+			return fmt.Errorf("failed to archive session %q: %w", sessionID, err)
+		}
+		return nil
+	})
 }
 
 func (r *Registry) ArchiveStale() (int, error) {
@@ -125,13 +178,27 @@ func (r *Registry) Delete(sessionID string) error {
 }
 
 func (r *Registry) DropbagPath(sessionID string) string {
-	safe := sanitizeID(sessionID)
+	safe, _ := sanitizeID(sessionID)
 	return filepath.Join(r.sessionsDir(), safe+".md")
 }
 
-func sanitizeID(id string) string {
+// sanitizeID validates and cleans a session ID for safe use as a filename.
+// Returns an error for empty strings, path traversal attempts, or IDs exceeding
+// the maximum length.
+func sanitizeID(id string) (string, error) {
+	if id == "" {
+		return "", fmt.Errorf("session ID must not be empty")
+	}
 	id = strings.ReplaceAll(id, "/", "_")
 	id = strings.ReplaceAll(id, "\\", "_")
 	id = strings.ReplaceAll(id, "\x00", "")
-	return id
+	// Reject path traversal sequences after slash replacement
+	id = strings.ReplaceAll(id, "..", "_")
+	if id == "" {
+		return "", fmt.Errorf("session ID is empty after sanitization")
+	}
+	if len(id) > maxIDLength {
+		id = id[:maxIDLength]
+	}
+	return id, nil
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/daniil-lyalko/clade/internal/config"
 	"github.com/daniil-lyalko/clade/internal/session"
 	"github.com/daniil-lyalko/clade/internal/ui"
 	"github.com/spf13/cobra"
@@ -32,7 +33,7 @@ var headStartCmd = &cobra.Command{
 func init() {
 	headStartCmd.Flags().BoolVar(&headStartAttachFlag, "attach", false, "Attach to tmux after starting")
 	headStartCmd.Flags().StringVar(&headStartChannelFlag, "channel", "", "Channel plugin name to pass to claude")
-	headStartCmd.Flags().StringVar(&headStartNameFlag, "name", "head", "Name for the head session (tmux session: clade-{name})")
+	headStartCmd.Flags().StringVar(&headStartNameFlag, "name", session.HeadSessionID, "Name for the head session (tmux session: clade-{name})")
 }
 
 func runHeadStart(cmd *cobra.Command, args []string) error {
@@ -72,10 +73,10 @@ func runHeadStart(cmd *cobra.Command, args []string) error {
 	}
 
 	// Register in session registry
-	reg := session.NewRegistry(cladeBaseDir())
+	reg := session.NewRegistry(config.DotCladeDir())
 	sess := &session.Session{
 		SessionID:  name,
-		Project:    "head",
+		Project:    session.HeadSessionID,
 		CWD:        headDir,
 		Started:    time.Now(),
 		LastActive: time.Now(),
@@ -100,7 +101,7 @@ func runHeadStart(cmd *cobra.Command, args []string) error {
 
 // isHeadRunning checks if the default clade-head tmux session exists.
 func isHeadRunning() bool {
-	return isHeadRunningByName(headTmuxSessionName("head"))
+	return isHeadRunningByName(headTmuxSessionName(session.HeadSessionID))
 }
 
 // isHeadRunningByName checks if a tmux session with the given name exists.
@@ -111,7 +112,7 @@ func isHeadRunningByName(tmuxSession string) bool {
 
 // attachToHead attaches to the default head tmux session.
 func attachToHead() error {
-	return attachToHeadByName(headTmuxSessionName("head"))
+	return attachToHeadByName(headTmuxSessionName(session.HeadSessionID))
 }
 
 // attachToHeadByName attaches to a tmux session by name.

@@ -1,3 +1,5 @@
+> **NOTE:** This is the original implementation plan. The actual implementation may differ. See source code for current behavior.
+
 # Clade v0.8: Session Awareness Layer — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
