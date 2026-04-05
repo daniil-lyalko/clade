@@ -46,35 +46,54 @@ func runHeadStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("head not initialized. Run `clade head init` first")
 	}
 
-	// Check if already running
+	// Check if already running — if so, just go to it
 	if isHeadRunningByName(tmuxSession) {
-		ui.Info("Head session '%s' is already running", name)
-		ui.Detail("Attach with: clade head attach --name %s", name)
-		if headStartAttachFlag {
-			return attachToHeadByName(tmuxSession)
-		}
-		return nil
+		return goToHead(tmuxSession, name)
 	}
 
 	// Build claude command
-	claudeCmd := "claude --remote"
+	claudeCmd := "claude --remote-control"
 	if headStartChannelFlag != "" {
-		// Shell-escape channel value (single-quote with internal single-quote escaping)
 		quotedChannel := "'" + strings.ReplaceAll(headStartChannelFlag, "'", "'\"'\"'") + "'"
 		claudeCmd += fmt.Sprintf(" --channels plugin:%s@claude-plugins-official", quotedChannel)
 	}
 
-	// Quote headDir for safe shell interpolation (single quotes, escape internal single quotes)
+	// Quote headDir for safe shell interpolation
 	quotedDir := "'" + strings.ReplaceAll(headDir, "'", "'\"'\"'") + "'"
+	shellCmd := fmt.Sprintf("cd %s && %s", quotedDir, claudeCmd)
 
-	// Start tmux session
-	tmuxCmd := exec.Command("tmux", "new-session", "-d", "-s", tmuxSession,
-		fmt.Sprintf("cd %s && %s", quotedDir, claudeCmd))
-	if err := tmuxCmd.Run(); err != nil {
-		return fmt.Errorf("failed to start head session: %w (is tmux installed?)", err)
+	inTmux := os.Getenv("TMUX") != ""
+
+	if inTmux {
+		// Inside tmux: create a new window in current session
+		tmuxCmd := exec.Command("tmux", "new-window", "-n", tmuxSession, shellCmd)
+		if err := tmuxCmd.Run(); err != nil {
+			return fmt.Errorf("failed to create tmux window: %w", err)
+		}
+	} else {
+		// Not in tmux: create a new tmux session and attach
+		tmuxCmd := exec.Command("tmux", "new-session", "-s", tmuxSession, shellCmd)
+		tmuxCmd.Stdin = os.Stdin
+		tmuxCmd.Stdout = os.Stdout
+		tmuxCmd.Stderr = os.Stderr
+
+		// Register before attaching (attach blocks)
+		registerHeadSession(name, headDir)
+
+		return tmuxCmd.Run()
 	}
 
 	// Register in session registry
+	registerHeadSession(name, headDir)
+
+	ui.Success("Head session '%s' started", name)
+	ui.Detail("Switch to it: Ctrl-a then select '%s' window", tmuxSession)
+
+	return nil
+}
+
+// registerHeadSession saves the head session to the Clade registry.
+func registerHeadSession(name, headDir string) {
 	reg := session.NewRegistry(config.DotCladeDir())
 	sess := &session.Session{
 		SessionID:  name,
@@ -83,22 +102,29 @@ func runHeadStart(cmd *cobra.Command, args []string) error {
 		Started:    time.Now(),
 		LastActive: time.Now(),
 		Status:     session.StatusActive,
-		Summary:    fmt.Sprintf("Orchestrator session (%s)", name),
+		Summary:    "Orchestrator session",
 	}
 	if err := reg.Save(sess); err != nil {
 		ui.Warn("Failed to register head session: %v", err)
 	}
+}
 
-	ui.Success("Head session '%s' started", name)
-	ui.Detail("Attach: clade head attach --name %s", name)
-	ui.Detail("Stop:   clade head stop --name %s", name)
-	ui.Detail("Status: clade head status --name %s", name)
-
-	if headStartAttachFlag {
-		return attachToHeadByName(tmuxSession)
+// goToHead switches to an already-running head session.
+func goToHead(tmuxSession, name string) error {
+	inTmux := os.Getenv("TMUX") != ""
+	if inTmux {
+		// Try switching to the window in current tmux session
+		if exec.Command("tmux", "select-window", "-t", tmuxSession).Run() == nil {
+			return nil
+		}
+		// Window might be in a different tmux session, switch client
+		if exec.Command("tmux", "switch-client", "-t", tmuxSession).Run() == nil {
+			return nil
+		}
 	}
-
-	return nil
+	// Fallback: attach
+	ui.Info("Head '%s' is running. Attaching...", name)
+	return attachToHeadByName(tmuxSession)
 }
 
 // isHeadRunning checks if the default clade-head tmux session exists.
@@ -117,8 +143,20 @@ func attachToHead() error {
 	return attachToHeadByName(headTmuxSessionName(session.HeadSessionID))
 }
 
-// attachToHeadByName attaches to a tmux session by name.
+// attachToHeadByName switches to or attaches to a tmux session/window.
 func attachToHeadByName(tmuxSession string) error {
+	inTmux := os.Getenv("TMUX") != ""
+	if inTmux {
+		// Try window switch first
+		if exec.Command("tmux", "select-window", "-t", tmuxSession).Run() == nil {
+			return nil
+		}
+		// Try client switch (different tmux session)
+		if exec.Command("tmux", "switch-client", "-t", tmuxSession).Run() == nil {
+			return nil
+		}
+	}
+	// Not in tmux or switch failed: regular attach
 	cmd := exec.Command("tmux", "attach", "-t", tmuxSession)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
