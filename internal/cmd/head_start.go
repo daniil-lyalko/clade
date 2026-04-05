@@ -52,7 +52,7 @@ func runHeadStart(cmd *cobra.Command, args []string) error {
 	}
 
 	// Build claude command
-	claudeCmd := "claude --remote-control"
+	claudeCmd := fmt.Sprintf("claude --remote-control --permission-mode auto --name %q", "clade-"+name)
 	if headStartChannelFlag != "" {
 		quotedChannel := "'" + strings.ReplaceAll(headStartChannelFlag, "'", "'\"'\"'") + "'"
 		claudeCmd += fmt.Sprintf(" --channels plugin:%s@claude-plugins-official", quotedChannel)
