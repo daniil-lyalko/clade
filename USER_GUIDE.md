@@ -691,6 +691,127 @@ Cleaned up worktree 'try-redis'
 
 ---
 
+### `clade batch <tickets...>`
+
+**Purpose:** Process multiple Jira tickets in parallel, each in its own worktree with an autonomous Claude agent.
+
+```bash
+clade batch PROJ-123 PROJ-456                   # Direct ticket IDs
+clade batch --file tickets.csv                  # From CSV
+clade batch --file tickets.txt                  # From text (one ID per line)
+clade batch --jira-label triage-bug             # Fetched from Jira by label
+clade batch --jira-label bug --jira-project SALESPRO,LEAP
+```
+
+**How it works:**
+1. Clade gathers ticket IDs from all provided sources (args, `--file`, `--jira-label`), merges, and deduplicates.
+2. For each ticket, a worktree is created on a per-ticket branch.
+3. Each worktree runs `claude -p <prompt> --permission-mode bypassPermissions` autonomously. The default prompt instructs Claude to fetch the ticket (via Jira MCP), implement the change, run tests, push, and open a PR.
+4. Workers run in parallel (configurable). Logs and state land in `~/.config/clade/batches/{id}/`.
+
+**Input sources:**
+
+| Source | Flag | Notes |
+|---|---|---|
+| Positional args | `clade batch A-1 A-2` | Space-separated ticket IDs. |
+| CSV / text file | `--file / -F` | CSV supports `ticket`, `id`, `key`, `ticket_id` headers plus optional `repos` column (multi-repo per ticket). One-per-line text works too. |
+| Jira label query | `--jira-label` | Comma-separated labels. Delegated to the Atlassian Jira MCP — clade does not talk to Jira directly. |
+| Jira project scope | `--jira-project` | Comma-separated project keys. Optional; requires `--jira-label`. |
+
+All sources are merged and deduplicated — feel free to combine positional args, a CSV, and a label query in one invocation.
+
+**Flags:**
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `-F, --file` | — | CSV or text file of ticket IDs (optionally with per-ticket repos). |
+| `-n, --concurrency` | `2` | Number of parallel workers. |
+| `-r, --repo` | first registered | Default repo to work in (registered repo name or path). |
+| `-t, --type` | `feature` | Branch type (`feature`, `bug`, `spike`, `chore`, `hotfix`, `docs`, or config-defined). |
+| `-f, --from` | origin default | Base branch to create each ticket's branch from. |
+| `--budget` | — | Max USD per ticket passed to `claude --max-budget-usd`. |
+| `--prompt` | — | Override the default agent prompt. Placeholders: `{TICKET_ID}`, `{BRANCH}`. |
+| `--project` | off | Create a clade multi-repo workspace per ticket instead of a single worktree. |
+| `--jira-label` | — | Comma-separated Jira labels to fetch tickets for. |
+| `--jira-project` | — | Comma-separated Jira project keys scoping the label search. Requires `--jira-label`. |
+| `--dry-run` | off | Print what would be created (including resolved label IDs); run nothing. |
+
+**Subcommands:**
+
+```bash
+clade batch status               # List all batches
+clade batch status <batch-id>    # Detailed status for one batch
+clade batch logs <batch-id> <ticket-id>   # Full log for a ticket's agent run
+```
+
+**CSV format:**
+
+```csv
+ticket,repos
+PROJ-100,my-api
+PROJ-200,"my-api,my-frontend"
+PROJ-300,
+```
+
+Headers are optional (if absent, one ticket ID per line). The `repos` column is optional — when present, a ticket can span multiple repos, each getting a worktree on the shared branch.
+
+**Example — label fetch with dry-run:**
+
+```bash
+$ clade batch --jira-label triage-bug --jira-project SALESPRO --dry-run
+
+Fetching tickets from Jira for labels: triage-bug
+
+Dry run - no changes will be made
+
+Default repo: leap-360 (~/repos/leap-360)
+Tickets: 4
+Concurrency: 2
+Jira labels: triage-bug
+Jira projects: SALESPRO
+Resolved from labels: 4
+
+Would create:
+  SALESPRO-6493 → branch fix/SALESPRO-6493
+  SALESPRO-6501 → branch fix/SALESPRO-6501
+  SALESPRO-6510 → branch fix/SALESPRO-6510
+  SALESPRO-6514 → branch fix/SALESPRO-6514
+```
+
+**Prerequisites for label fetching:**
+- The Atlassian Jira MCP must be configured and authenticated in the Claude CLI used by the current shell.
+- Clade does not store or handle Jira credentials directly — the MCP owns that.
+
+**Label semantics:**
+- Multiple labels are combined with **AND** — a ticket must carry every label to match.
+- Multiple `--jira-project` values are OR-scoped (tickets in any of the listed projects).
+- To OR labels (match any), run clade once per label.
+
+**Routing tickets to repos via labels:**
+
+Clade does not inspect ticket content to choose a repo. Label fetching
+assigns every resolved ticket to the default repo (`-r`), same as
+positional args. If you have multiple repos and want each ticket to land
+in the right one, a convention-based approach works well:
+
+1. In Jira, tag every agent-ready ticket with two labels — a "pick me" label
+   like `for-agents` and a repo-name label matching the registered clade
+   repo (e.g. `leap_one_server`).
+2. Run one clade batch per repo:
+   ```bash
+   clade batch --jira-label for-agents,leap_one_server -r leap_one_server
+   clade batch --jira-label for-agents,salespro       -r salespro
+   ```
+
+Because label semantics are AND, each command returns only the tickets
+meant for that repo.
+
+For richer per-ticket repo metadata (pulling repo info from a Jira custom
+field, or carrying multi-repo assignments), use the CSV path with a
+`repos` column. See the "CSV format" section above.
+
+---
+
 ### `clade migrate`
 
 **Purpose:** Migrate existing experiments from v1 to v2 repo-centric structure.
@@ -994,6 +1115,37 @@ $ clade cleanup PROJ-1234
 
 ---
 
+### Scenario 5: Batch-process tickets by Jira label (with per-repo routing)
+
+You have multiple repos and want to dispatch the agent-ready tickets for each repo. Tag every agent-ready ticket in Jira with two labels:
+
+- `for-agents` — a shared "pick me up" label.
+- `<repo-name>` — matches the registered clade repo name (e.g. `leap_one_server`, `salespro`).
+
+Then run one batch per repo. Because labels are AND'd, each command pulls only the tickets meant for that repo.
+
+```bash
+# Preview what you'd get for the leap_one_server repo
+$ clade batch --jira-label for-agents,leap_one_server -r leap_one_server --dry-run
+
+# Launch it for real: 3 workers, $5 cap per ticket
+$ clade batch --jira-label for-agents,leap_one_server -r leap_one_server \
+    --concurrency 3 --type bug --budget 5.00
+
+# Then the salespro repo
+$ clade batch --jira-label for-agents,salespro -r salespro --concurrency 3
+
+# Check progress across all running batches
+$ clade batch status
+
+# Drill into one ticket's agent log
+$ clade batch logs 2026-04-20-0930 SALESPRO-6493
+```
+
+Each ticket gets its own worktree, its own autonomous Claude session, and a PR (or a "needs more detail" comment back on the ticket, if the description was too vague). Clade does not mutate Jira directly; the agents do that via the Jira MCP.
+
+---
+
 ## Quick Reference
 
 ```bash
@@ -1025,6 +1177,15 @@ clade scratch doc-review          # No-git scratch folder
 clade status                      # Current context
 clade doctor                      # Diagnose configuration issues
 clade migrate                     # Migrate v1 -> v2 structure
+
+# Batch mode (parallel ticket processing)
+clade batch PROJ-1 PROJ-2                       # From args
+clade batch --file tickets.csv                  # From CSV/text
+clade batch --jira-label bug                    # Fetched from Jira by label
+clade batch --jira-label bug --jira-project PROJ,OTHER --concurrency 3
+clade batch status                              # List all batches
+clade batch status <batch-id>                   # Detailed batch status
+clade batch logs <batch-id> <ticket-id>         # Ticket log
 
 # Useful flags
 clade foo -p                      # Force repo picker
