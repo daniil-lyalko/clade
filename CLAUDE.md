@@ -45,6 +45,13 @@ clade repo remove my-repo         # Unregister
 clade init                        # Setup .claude/ with hooks
 clade doctor                      # Diagnose configuration issues
 
+# Batch mode (parallel ticket processing)
+clade batch PROJ-1 PROJ-2                       # From args
+clade batch --file tickets.csv                  # From CSV
+clade batch --jira-label bug                    # From Jira label (via MCP)
+clade batch --jira-label bug --jira-project PROJ --concurrency 3
+clade batch status                              # List batches
+
 # Useful flags
 clade foo -p                      # Force repo picker
 clade foo -r my-api               # Use specific repo

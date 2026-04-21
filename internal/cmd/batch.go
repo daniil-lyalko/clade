@@ -24,7 +24,14 @@ var (
 	batchFromFlag        string
 	batchDryRunFlag      bool
 	batchProjectFlag     bool
+	batchJiraLabelFlag   []string
+	batchJiraProjectFlag []string
 )
+
+// labelTicketFetcher is the seam used by runBatch to resolve tickets from
+// Jira labels. Production code points it at batch.FetchTicketsByLabel;
+// tests swap it for a canned fetcher.
+var labelTicketFetcher = batch.FetchTicketsByLabel
 
 var batchCmd = &cobra.Command{
 	Use:   "batch [ticket-ids...]",
@@ -37,15 +44,22 @@ Input methods:
   clade batch PROJ-123 PROJ-456 PROJ-789       # Direct ticket IDs
   clade batch --file tickets.csv                # From CSV file
   clade batch --file tickets.txt                # From text file (one per line)
+  clade batch --jira-label bug                  # Fetched from Jira by label
+  clade batch --jira-label bug --jira-project PROJ  # Scoped to projects
 
 CSV files can have a header row with "ticket", "id", or "key" column,
 or just one ticket ID per line.
+
+Label-based fetching delegates to the Atlassian Jira MCP (no Jira
+credentials are handled by clade directly). Inputs from all sources are
+merged and deduplicated.
 
 Examples:
   clade batch SALESPRO-1234 SALESPRO-1235 --concurrency 2
   clade batch --file sprint-tickets.csv --concurrency 3 --repo leap-360
   clade batch PROJ-100 --budget 5.00 --type bug
-  clade batch PROJ-100 --prompt "Fix the bug described in {TICKET_ID}"`,
+  clade batch PROJ-100 --prompt "Fix the bug described in {TICKET_ID}"
+  clade batch --jira-label triage-bug --jira-project SALESPRO,LEAP --dry-run`,
 	Args: cobra.ArbitraryArgs,
 	RunE: runBatch,
 }
@@ -80,10 +94,43 @@ func init() {
 	batchCmd.Flags().StringVarP(&batchFromFlag, "from", "f", "", "Base branch to create from (default: origin's default branch)")
 	batchCmd.Flags().BoolVar(&batchDryRunFlag, "dry-run", false, "Preview what would be created without running")
 	batchCmd.Flags().BoolVar(&batchProjectFlag, "project", false, "Create a clade project per ticket (multi-repo workspace)")
+	batchCmd.Flags().StringSliceVar(&batchJiraLabelFlag, "jira-label", nil, "Comma-separated Jira labels to fetch tickets for (via Atlassian MCP)")
+	batchCmd.Flags().StringSliceVar(&batchJiraProjectFlag, "jira-project", nil, "Comma-separated Jira project keys to scope label search (requires --jira-label)")
+}
+
+// labelFetchInfo captures what was requested from Jira so dry-run output
+// can display it. nil when no label fetching happened.
+type labelFetchInfo struct {
+	Labels   []string
+	Projects []string
+	Resolved int
 }
 
 func runBatch(cmd *cobra.Command, args []string) error {
-	// Collect ticket inputs from args and/or file
+	// Validate Jira label-fetching flag composition up front.
+	//
+	// Cobra's StringSliceVar leaves the backing slice empty when the user
+	// passes --jira-label="" — so slice length alone isn't enough to
+	// distinguish "flag not passed" from "flag passed with empty value."
+	// Flags().Changed reports whether the flag was passed regardless of
+	// value. Tests call runBatch with a nil cmd and set the slice
+	// directly, so we also accept a non-empty slice as evidence.
+	labels := trimStrings(batchJiraLabelFlag)
+	jiraProjects := trimStrings(batchJiraProjectFlag)
+
+	labelExplicit := len(batchJiraLabelFlag) > 0 ||
+		(cmd != nil && cmd.Flags().Changed("jira-label"))
+	projectExplicit := len(batchJiraProjectFlag) > 0 ||
+		(cmd != nil && cmd.Flags().Changed("jira-project"))
+
+	if projectExplicit && !labelExplicit {
+		return fmt.Errorf("--jira-project requires --jira-label")
+	}
+	if labelExplicit && len(labels) == 0 {
+		return fmt.Errorf("--jira-label cannot be empty")
+	}
+
+	// Collect ticket inputs from args and/or file and/or Jira label query.
 	var inputs []batch.TicketInput
 
 	// From CLI args
@@ -100,8 +147,24 @@ func runBatch(cmd *cobra.Command, args []string) error {
 		inputs = append(inputs, fileTickets...)
 	}
 
+	// From Jira label query (MCP-delegated; no Go-side Jira client)
+	var fetchInfo *labelFetchInfo
+	if len(labels) > 0 {
+		ui.Info("Fetching tickets from Jira for labels: %s", strings.Join(labels, ", "))
+		labelTickets, err := labelTicketFetcher(labels, jiraProjects)
+		if err != nil {
+			return fmt.Errorf("jira label fetch failed: %w", err)
+		}
+		fetchInfo = &labelFetchInfo{
+			Labels:   labels,
+			Projects: jiraProjects,
+			Resolved: len(labelTickets),
+		}
+		inputs = append(inputs, labelTickets...)
+	}
+
 	if len(inputs) == 0 {
-		return fmt.Errorf("no ticket IDs provided. Pass them as arguments or use --file")
+		return fmt.Errorf("no ticket IDs provided. Pass them as arguments, use --file, or use --jira-label")
 	}
 
 	// Deduplicate by ticket ID
@@ -138,7 +201,7 @@ func runBatch(cmd *cobra.Command, args []string) error {
 
 	// Dry run
 	if batchDryRunFlag {
-		return printBatchDryRun(inputs, defaultRepoName, defaultRepoPath, labelCfg.BranchPrefix, cfg)
+		return printBatchDryRun(inputs, defaultRepoName, defaultRepoPath, labelCfg.BranchPrefix, cfg, fetchInfo)
 	}
 
 	// Create batch
@@ -457,7 +520,7 @@ func runBatchLogs(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func printBatchDryRun(inputs []batch.TicketInput, defaultRepoName, defaultRepoPath, branchPrefix string, cfg *config.Config) error {
+func printBatchDryRun(inputs []batch.TicketInput, defaultRepoName, defaultRepoPath, branchPrefix string, cfg *config.Config, fetchInfo *labelFetchInfo) error {
 	fmt.Println()
 	fmt.Println(ui.Bold("Dry run - no changes will be made"))
 	fmt.Println()
@@ -465,6 +528,13 @@ func printBatchDryRun(inputs []batch.TicketInput, defaultRepoName, defaultRepoPa
 	ui.KeyValue("Default repo", fmt.Sprintf("%s (%s)", defaultRepoName, defaultRepoPath))
 	ui.KeyValue("Tickets", fmt.Sprintf("%d", len(inputs)))
 	ui.KeyValue("Concurrency", fmt.Sprintf("%d", batchConcurrencyFlag))
+	if fetchInfo != nil {
+		ui.KeyValue("Jira labels", strings.Join(fetchInfo.Labels, ", "))
+		if len(fetchInfo.Projects) > 0 {
+			ui.KeyValue("Jira projects", strings.Join(fetchInfo.Projects, ", "))
+		}
+		ui.KeyValue("Resolved from labels", fmt.Sprintf("%d", fetchInfo.Resolved))
+	}
 	if batchProjectFlag {
 		ui.KeyValue("Mode", "project (multi-repo workspace per ticket)")
 	}
@@ -504,6 +574,19 @@ func printBatchDryRun(inputs []batch.TicketInput, defaultRepoName, defaultRepoPa
 	fmt.Println()
 	fmt.Println(ui.Dim("Remove --dry-run to execute"))
 	return nil
+}
+
+// trimStrings returns a copy of values with whitespace trimmed and empty
+// entries removed.
+func trimStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		v = strings.TrimSpace(v)
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func dedupInputs(inputs []batch.TicketInput) []batch.TicketInput {

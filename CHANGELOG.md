@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Label-based ticket fetching for `clade batch`:**
+  - `--jira-label <labels>` — comma-separated Jira labels; resolves matching ticket IDs via the Atlassian Jira MCP (no Go-side Jira client, no credentials handled by clade). **Multiple labels use AND semantics** — a ticket must carry all of them to match, enabling convention-based per-repo routing (e.g. `--jira-label for-agents,leap_one_server -r leap_one_server`).
+  - `--jira-project <keys>` — comma-separated Jira project keys scoping the label search (OR-scoped). Requires `--jira-label`.
+  - Composes with positional args and `--file`: inputs from all sources are merged and deduplicated.
+  - `--dry-run` resolves and prints matched tickets without dispatching work.
+- **Docs:** full `clade batch` section in `USER_GUIDE.md` (commands, flags, CSV format, label workflow, per-repo routing guidance); batch entries added to `README.md` and `CLAUDE.md` quick references.
+
 ## [0.7.0] - 2026-03-20
 
 ### Added

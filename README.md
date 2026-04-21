@@ -97,7 +97,16 @@ clade repo list                # Show registered repos
 clade init                     # Setup hooks in current repo
 clade doctor                   # Diagnose configuration issues
 clade status                   # Show context for current dir
+
+# Batch mode (parallel ticket processing)
+clade batch PROJ-1 PROJ-2              # From args
+clade batch --file tickets.csv         # From CSV/text
+clade batch --jira-label triage-bug    # Fetched from Jira by label
+clade batch --jira-label bug --jira-project PROJ --concurrency 3
+clade batch status                     # List all batches
 ```
+
+See [USER_GUIDE.md](USER_GUIDE.md#clade-batch-tickets) for full batch-mode docs.
 
 ### Key Flags
 
